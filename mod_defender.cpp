@@ -1,12 +1,20 @@
 #include "mod_defender.hpp"
 #include "CApplication.hpp"
 
+<<<<<<< HEAD
+=======
+/*
+ * This module
+ */
+extern module AP_MODULE_DECLARE_DATA defender_module;
+
+>>>>>>> 5eee329... naxsi core rules parser
 /* Custom definition to hold any configuration data we may need.
    At this stage we just use it to keep a copy of the CApplication
    object pointer. Later we will add more when we need specific custom
    configuration information. */
-EXTERN_C_BLOCK_BEGIN
 typedef struct {
+<<<<<<< HEAD
     void* vpCApplication;
 }
 DEFENDERCONFIG_t;
@@ -26,24 +34,70 @@ DEFENDERCONFIG_t* defender_get_config_ptr(request_rec* inpRequest);
    end of the request cycle. */
 EXTERN_C_FUNC
 apr_status_t defender_delete_capplication_object(void* inPtr) {
+=======
+    void *vpCApplication;
+} defender_config_t;
+
+/*
+ * This modules per-server configuration structure.
+ */
+typedef struct {
+    char *errorlog_path;
+    apr_file_t *errorlog_fd;
+    char *nxcorerules_path;
+    apr_file_t *nxcorerules_fd;
+    vector<nxrule_t> rules;
+} server_config_t;
+
+/* Custom function to ensure our CApplication get's deleted at the
+   end of the request cycle. */
+apr_status_t defender_delete_capplication_object(void *inPtr) {
+>>>>>>> 5eee329... naxsi core rules parser
     if (inPtr)
         delete ( CApplication*) inPtr;
 
     return OK;
 }
 
+<<<<<<< HEAD
 /* Our custom handler (content generator) 
  */
 EXTERN_C_FUNC
 int defender_handler(request_rec* inpRequest) {
     /* Create an instance of our application. */
     CApplication* pApp = new CApplication(inpRequest);
+=======
+/* Custom function to retrieve our defender_config_t* pointer previously
+   registered with Apache on this request cycle. */
+defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
+    defender_config_t *pReturnValue = NULL;
+
+    if (inpRequest != NULL) {
+        pReturnValue = (defender_config_t *) ap_get_module_config(inpRequest->request_config, &defender_module);
+    }
+
+    return pReturnValue;
+}
+
+/* Our custom handler (content generator)
+ */
+int defender_handler(request_rec *r) {
+    // Get the module configuration
+    server_config_t *scfg = (server_config_t*) ap_get_module_config(r->server->module_config, &defender_module);
+
+    // Send a message to the log file.
+//    cerr << "mod_defender: errorlog path: " << scfg->errorlog_path << endl;
+
+    /* Create an instance of our application. */
+    CApplication *pApp = new CApplication(r, scfg->errorlog_fd, scfg->rules);
+>>>>>>> 5eee329... naxsi core rules parser
 
     if (pApp == NULL)
         return HTTP_SERVICE_UNAVAILABLE;
 
     /* Register a C function to delete pApp
        at the end of the request cycle. */
+<<<<<<< HEAD
     apr_pool_cleanup_register(
             inpRequest->pool,
             (void*) pApp,
@@ -56,12 +110,24 @@ int defender_handler(request_rec* inpRequest) {
     DEFENDERCONFIG_t* pFooConfig =
             (DEFENDERCONFIG_t*) apr_palloc(
             inpRequest->pool, sizeof ( DEFENDERCONFIG_t));
+=======
+    apr_pool_cleanup_register(r->pool, (void*)pApp, defender_delete_capplication_object, apr_pool_cleanup_null);
+
+    /* Reserve a temporary memory block from the
+       request pool to store data between hooks. */
+    defender_config_t *pDefenderConfig = (defender_config_t *) apr_palloc(r->pool, sizeof(defender_config_t));
+>>>>>>> 5eee329... naxsi core rules parser
 
     /* Remember our application pointer for future calls. */
     pFooConfig->vpCApplication = (void*) pApp;
 
+<<<<<<< HEAD
     /* Register our config data structure for our module. */
 //    defender_register_config_ptr(inpRequest, pFooConfig);
+=======
+    /* Register our config data structure for our module for retrieval later as required */
+    ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
+>>>>>>> 5eee329... naxsi core rules parser
 
     /* Run our application handler. */
     return pApp->RunHandler();
@@ -69,6 +135,7 @@ int defender_handler(request_rec* inpRequest) {
 
 /* Apache callback to register our hooks.
  */
+<<<<<<< HEAD
 EXTERN_C_FUNC
 void defender_hooks(apr_pool_t* inpPool) {
     ap_hook_handler(defender_handler, NULL, NULL, APR_HOOK_MIDDLE);
@@ -101,6 +168,106 @@ void defender_register_capplication_ptr(request_rec* inpRequest, DEFENDERCONFIG_
 EXTERN_C_FUNC
 DEFENDERCONFIG_t* defender_get_capplication_ptr(request_rec* inpRequest) {
     DEFENDERCONFIG_t* pReturnValue = NULL;
+=======
+void defender_register_hooks(apr_pool_t *pool) {
+    ap_hook_handler(defender_handler, NULL, NULL, APR_HOOK_MIDDLE);
+}
+
+/**
+ * This function is called when the "NxErrorLog" configuration directive is parsed.
+ */
+const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
+    // get the module configuration (this is the structure created by create_server_config())
+    server_config_t *scfg = (server_config_t*) ap_get_module_config(cmd->server->module_config, &defender_module);
+
+    // make a duplicate of the argument's value using the command parameters pool.
+    scfg->errorlog_path = (char *) arg;
+
+    if (scfg->errorlog_path[0] == '|') {
+        const char *pipe_name = scfg->errorlog_path + 1;
+        piped_log *pipe_log;
+
+        pipe_log = ap_open_piped_log(cmd->pool, pipe_name);
+        if (pipe_log == NULL) {
+            return apr_psprintf(cmd->pool, "mod_defender: Failed to open the errorlog pipe: %s",
+                                pipe_name);
+        }
+        scfg->errorlog_fd = ap_piped_log_write_fd(pipe_log);
+    }
+    else {
+        const char *file_name = ap_server_root_relative(cmd->pool, scfg->errorlog_path);
+        apr_status_t rc;
+
+        rc = apr_file_open(&scfg->errorlog_fd, file_name,
+                           APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
+                           APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
+
+        if (rc != APR_SUCCESS) {
+            return apr_psprintf(cmd->pool, "mod_defender: Failed to open the errorlog file: %s", file_name);
+        }
+    }
+
+    return NULL; // success
+}
+
+/**
+ * This function is called when the "NxCoreRules" configuration directive is parsed.
+ */
+const char *set_nxcorerules_path(cmd_parms *cmd, void *_scfg, const char *arg) {
+    // get the module configuration (this is the structure created by create_server_config())
+    server_config_t *scfg = (server_config_t*) ap_get_module_config(cmd->server->module_config, &defender_module);
+
+    // make a duplicate of the argument's value using the command parameters pool.
+    scfg->nxcorerules_path = (char *) arg;
+
+    const char *file_name = ap_server_root_relative(cmd->pool, scfg->nxcorerules_path);
+    apr_status_t rc;
+
+    rc = apr_file_open(&scfg->nxcorerules_fd, file_name,
+                       APR_READ,
+                       APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
+
+    if (rc != APR_SUCCESS) {
+        return apr_psprintf(cmd->pool, "mod_defender: Failed to open the nxcorerules file: %s", file_name);
+    }
+
+    apr_size_t nbytes = 256;
+    char* buf = (char*) apr_pcalloc(cmd->pool, nbytes + 1);
+    string str = "";
+
+    while (apr_file_read(scfg->nxcorerules_fd, buf, &nbytes) == APR_SUCCESS) {
+        str += buf;
+        memset(buf, 0, nbytes + 1);
+    }
+
+    RuleParser parser = RuleParser(cmd->pool, str);
+    vector<nxrule_t> rules = parser.parse();
+
+    apr_file_close(scfg->nxcorerules_fd);
+
+    scfg->rules = rules;
+
+    return NULL; // success
+}
+
+/**
+ * A declaration of the configuration directives that are supported by this module.
+ */
+const command_rec directives[] = {
+    { "NxErrorLog", (cmd_func) set_errorlog_path, NULL, RSRC_CONF, TAKE1, "Path to the errorlog file" },
+    { "NxCoreRules", (cmd_func) set_nxcorerules_path, NULL, RSRC_CONF, TAKE1, "Path to the naxsi core rules file" },
+    { NULL }
+};
+
+/**
+ * Creates the per-server configuration records.
+ */
+void *create_server_config(apr_pool_t *p, server_rec *s) {
+    server_config_t *srvcfg;
+
+    // allocate space for the configuration structure from the provided pool p.
+    srvcfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
+>>>>>>> 5eee329... naxsi core rules parser
 
     if (inpRequest != NULL) {
         pReturnValue =
@@ -108,5 +275,19 @@ DEFENDERCONFIG_t* defender_get_capplication_ptr(request_rec* inpRequest) {
                 inpRequest->request_config, &defender_module);
     }
 
+<<<<<<< HEAD
     return pReturnValue;
 }
+=======
+/* Our standard module definition.
+ */
+module AP_MODULE_DECLARE_DATA defender_module = {
+        STANDARD20_MODULE_STUFF,
+        NULL,
+        NULL,
+        create_server_config, // create per-server configuration structures.,
+        NULL,
+        directives, // configuration directive handlers,
+        defender_register_hooks // request handlers
+};
+>>>>>>> 5eee329... naxsi core rules parser
