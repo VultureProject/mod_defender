@@ -20,8 +20,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 set(SOURCE_FILES mod_defender.cpp mod_defender.hpp CApplication.cpp CApplication.hpp libinjection/libinjection.h
         libinjection/libinjection_html5.c libinjection/libinjection_sqli.c libinjection/libinjection_sqli.h
         libinjection/libinjection_sqli_data.h libinjection/libinjection_xss.c libinjection/libinjection_xss.h
+<<<<<<< HEAD
         RuleParser.cpp RuleParser.h Util.cpp Util.h)
 >>>>>>> 5eee329... naxsi core rules parser
+=======
+        NxParser.cpp NxParser.h Util.cpp Util.h)
+>>>>>>> 90f8163... per-directory config handler
 add_library(mod_defender SHARED ${SOURCE_FILES})
 
 add_custom_command(

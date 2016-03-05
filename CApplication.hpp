@@ -23,7 +23,7 @@ public:
 #include <chrono>
 #include <httpd.h>
 #include <unordered_map>
-#include "RuleParser.h"
+#include "NxParser.h"
 #include "mod_defender.hpp"
 
 using std::chrono::system_clock;

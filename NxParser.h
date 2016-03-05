@@ -1,5 +1,5 @@
-#ifndef MOD_DEFENDER_RULEPARSER_H
-#define MOD_DEFENDER_RULEPARSER_H
+#ifndef MOD_DEFENDER_NXPARSER_H
+#define MOD_DEFENDER_NXPARSER_H
 
 #include <apr_file_io.h>
 #include <iostream>
@@ -32,15 +32,11 @@ typedef struct {
     unsigned int id;
 } nxrule_t;
 
-class RuleParser {
-private:
-    apr_pool_t* pool;
-    string nxcorerules;
+class NxParser {
 
 public:
-    RuleParser(apr_pool_t* pool, string &nxcorerules);
-    vector<nxrule_t> parse();
+    static vector<nxrule_t> parseCoreRules(apr_pool_t *pool, apr_array_header_t *mainRules);
 };
 
 
-#endif //MOD_DEFENDER_RULEPARSER_H
+#endif //MOD_DEFENDER_NXPARSER_H

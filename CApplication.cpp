@@ -141,13 +141,6 @@ void CApplication::checkVector(const char *zone, vector<pair<const char *, const
 int CApplication::runHandler() {
     int returnVal = DECLINED;
 
-    // To check if mod_defender is activated
-    if (r->handler != NULL && strcmp(r->handler, "defender") == 0) {
-        ap_rputs("<!DOCTYPE html>\n<html><head><title>mod_defender config</title></head>"
-                         "<body>mod_defender <span style='color:green;'>enabled</span></body></html>", r);
-        returnVal = OK;
-    }
-
     checkVector("$HEADERS_VAR:Cookie", headers);
     checkVector("ARGS", args);
     checkVector("BODY", body);

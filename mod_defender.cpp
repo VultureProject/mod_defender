@@ -41,6 +41,10 @@ apr_status_t defender_delete_capplication_object(void* inPtr) {
     void *vpCApplication;
 } defender_config_t;
 
+typedef struct {
+    apr_array_header_t *mainRules;
+} dir_config_t;
+
 /* Custom function to ensure our CApplication get's deleted at the
    end of the request cycle. */
 apr_status_t defender_delete_capplication_object(void *inPtr) {
@@ -71,14 +75,19 @@ defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
     return pReturnValue;
 }
 
-/* Our custom handler (content generator)
+/* Our custom handler
  */
 int defender_handler(request_rec *r) {
     // Get the module configuration
-    server_config_t *scfg = (server_config_t*) ap_get_module_config(r->server->module_config, &defender_module);
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
+    dir_config_t *dcfg = (dir_config_t *) ap_get_module_config(r->per_dir_config, &defender_module);
 
-    // Send a message to the log file.
-//    cerr << "mod_defender: errorlog path: " << scfg->errorlog_path << endl;
+//    for (int i = 0; i < dcfg->mainRules->nelts; i++) {
+//        const char *s = ((const char **) dcfg->mainRules->elts)[i];
+//        fprintf(stderr, "%d: %s\n", i, s);
+//    }
+    if (scfg->rules.size() == 0)
+        scfg->rules = NxParser::parseCoreRules(r->pool, dcfg->mainRules);
 
     /* Create an instance of our application. */
 <<<<<<< HEAD
@@ -94,6 +103,7 @@ int defender_handler(request_rec *r) {
     /* Register a C function to delete pApp
        at the end of the request cycle. */
 <<<<<<< HEAD
+<<<<<<< HEAD
     apr_pool_cleanup_register(
             inpRequest->pool,
             (void*) pApp,
@@ -108,6 +118,9 @@ int defender_handler(request_rec *r) {
             inpRequest->pool, sizeof ( DEFENDERCONFIG_t));
 =======
     apr_pool_cleanup_register(r->pool, (void*)pApp, defender_delete_capplication_object, apr_pool_cleanup_null);
+=======
+    apr_pool_cleanup_register(r->pool, (void *) pApp, defender_delete_capplication_object, apr_pool_cleanup_null);
+>>>>>>> 90f8163... per-directory config handler
 
     /* Reserve a temporary memory block from the
        request pool to store data between hooks. */
@@ -174,7 +187,7 @@ void defender_register_hooks(apr_pool_t *pool) {
  */
 const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     // get the module configuration (this is the structure created by create_server_config())
-    server_config_t *scfg = (server_config_t*) ap_get_module_config(cmd->server->module_config, &defender_module);
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
 
     // make a duplicate of the argument's value using the command parameters pool.
     scfg->errorlog_path = (char *) arg;
@@ -206,62 +219,29 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     return NULL; // success
 }
 
-/**
- * This function is called when the "NxCoreRules" configuration directive is parsed.
- */
-const char *set_nxcorerules_path(cmd_parms *cmd, void *_scfg, const char *arg) {
-    // get the module configuration (this is the structure created by create_server_config())
-    server_config_t *scfg = (server_config_t*) ap_get_module_config(cmd->server->module_config, &defender_module);
-
-    // make a duplicate of the argument's value using the command parameters pool.
-    scfg->nxcorerules_path = (char *) arg;
-
-    const char *file_name = ap_server_root_relative(cmd->pool, scfg->nxcorerules_path);
-    apr_status_t rc;
-
-    rc = apr_file_open(&scfg->nxcorerules_fd, file_name,
-                       APR_READ,
-                       APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
-
-    if (rc != APR_SUCCESS) {
-        return apr_psprintf(cmd->pool, "mod_defender: Failed to open the nxcorerules file: %s", file_name);
-    }
-
-    apr_size_t nbytes = 256;
-    char* buf = (char*) apr_pcalloc(cmd->pool, nbytes + 1);
-    string str = "";
-
-    while (apr_file_read(scfg->nxcorerules_fd, buf, &nbytes) == APR_SUCCESS) {
-        str += buf;
-        memset(buf, 0, nbytes + 1);
-    }
-
-    RuleParser parser = RuleParser(cmd->pool, str);
-    vector<nxrule_t> rules = parser.parse();
-
-    apr_file_close(scfg->nxcorerules_fd);
-
-    scfg->rules = rules;
-
-    return NULL; // success
+const char *set_nxcore_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
+    dir_config_t *scfg = (dir_config_t *) sconf_;
+    *(const char **) apr_array_push(scfg->mainRules) = apr_pstrdup(scfg->mainRules->pool, arg);
+//        return apr_psprintf(cmd->pool, "mod_defender: MainRule variable %s was undefined", arg);
+    return NULL;
 }
 
 /**
  * A declaration of the configuration directives that are supported by this module.
  */
 const command_rec directives[] = {
-    { "NxErrorLog", (cmd_func) set_errorlog_path, NULL, RSRC_CONF, TAKE1, "Path to the errorlog file" },
-    { "NxCoreRules", (cmd_func) set_nxcorerules_path, NULL, RSRC_CONF, TAKE1, "Path to the naxsi core rules file" },
-    { NULL }
+        {"NxErrorLog", (cmd_func) set_errorlog_path, NULL, RSRC_CONF, TAKE1, "Path to the errorlog file"},
+        {"MainRule",   (cmd_func) set_nxcore_rules,  NULL, RSRC_CONF | ACCESS_CONF, ITERATE, "NxCoreRules directives"},
+//    { "NxCoreRules", (cmd_func) set_nxcorerules_path, NULL, RSRC_CONF, TAKE1, "Path to the naxsi core rules file" },
+        {NULL}
 };
 
 /**
  * Creates the per-server configuration records.
  */
 void *create_server_config(apr_pool_t *p, server_rec *s) {
-    server_config_t *srvcfg;
-
     // allocate space for the configuration structure from the provided pool p.
+<<<<<<< HEAD
     srvcfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
 >>>>>>> 5eee329... naxsi core rules parser
 
@@ -270,6 +250,28 @@ void *create_server_config(apr_pool_t *p, server_rec *s) {
                 (DEFENDERCONFIG_t*) ap_get_module_config(
                 inpRequest->request_config, &defender_module);
     }
+=======
+    server_config_t *scfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
+
+    // return the new server configuration structure.
+    return scfg;
+}
+
+static void *create_env_dir_config(apr_pool_t *p, char *dummy) {
+    dir_config_t *dcfg = (dir_config_t *) apr_palloc(p, sizeof(*dcfg));
+    dcfg->mainRules = apr_array_make(p, 209, sizeof(const char *));
+    return dcfg;
+}
+
+static void *merge_env_dir_configs(apr_pool_t *p, void *basev, void *addv) {
+    dir_config_t *base = (dir_config_t *) basev;
+    dir_config_t *add = (dir_config_t *) addv;
+    dir_config_t *res = (dir_config_t *) apr_palloc(p, sizeof(*res));
+
+    res->mainRules = apr_array_copy(p, base->mainRules);
+    return res;
+}
+>>>>>>> 90f8163... per-directory config handler
 
 <<<<<<< HEAD
     return pReturnValue;
@@ -279,8 +281,8 @@ void *create_server_config(apr_pool_t *p, server_rec *s) {
  */
 module AP_MODULE_DECLARE_DATA defender_module = {
         STANDARD20_MODULE_STUFF,
-        NULL,
-        NULL,
+        create_env_dir_config,
+        merge_env_dir_configs,
         create_server_config, // create per-server configuration structures.,
         NULL,
         directives, // configuration directive handlers,

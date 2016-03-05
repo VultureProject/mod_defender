@@ -24,7 +24,7 @@
 #include <http_connection.h>
 #include <http_core.h>
 #include <http_log.h>
-#include "RuleParser.h"
+#include "NxParser.h"
 
 /*
  * Per-server configuration structure.
