@@ -2,10 +2,13 @@
 #include "CApplication.hpp"
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 /*
  * This module
  */
+=======
+>>>>>>> fd0f819... scoring system
 extern module AP_MODULE_DECLARE_DATA defender_module;
 
 >>>>>>> 5eee329... naxsi core rules parser
@@ -37,17 +40,6 @@ apr_status_t defender_delete_capplication_object(void* inPtr) {
 =======
     void *vpCApplication;
 } defender_config_t;
-
-/*
- * This modules per-server configuration structure.
- */
-typedef struct {
-    char *errorlog_path;
-    apr_file_t *errorlog_fd;
-    char *nxcorerules_path;
-    apr_file_t *nxcorerules_fd;
-    vector<nxrule_t> rules;
-} server_config_t;
 
 /* Custom function to ensure our CApplication get's deleted at the
    end of the request cycle. */
@@ -89,10 +81,14 @@ int defender_handler(request_rec *r) {
 //    cerr << "mod_defender: errorlog path: " << scfg->errorlog_path << endl;
 
     /* Create an instance of our application. */
+<<<<<<< HEAD
     CApplication *pApp = new CApplication(r, scfg->errorlog_fd, scfg->rules);
 >>>>>>> 5eee329... naxsi core rules parser
+=======
+    CApplication *pApp = new CApplication(r, scfg);
+>>>>>>> fd0f819... scoring system
 
-    if (pApp == NULL)
+    if (pApp == nullptr)
         return HTTP_SERVICE_UNAVAILABLE;
 
     /* Register a C function to delete pApp

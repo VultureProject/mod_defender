@@ -5,7 +5,7 @@ vector<string> Util::split(string &s, char delimiter, bool ignoreEscaped) {
     size_t pos = 0;
     string token;
     while ((pos = s.find(delimiter)) != string::npos) {
-        if (ignoreEscaped && pos > 0 && s[pos-1] == '\\') {
+        if (ignoreEscaped && pos > 1 && s[pos-1] == '\\' && s[pos-2] != '\\') { // soit 2 soit aucun \ devant
             pos = s.find(delimiter, pos+1);
             if (pos == string::npos)
                 break;

@@ -19,6 +19,24 @@
 #include <httpd.h>
 #include <http_protocol.h>
 #include <http_config.h>
+<<<<<<< HEAD
+=======
+#include <http_connection.h>
+#include <http_core.h>
+#include <http_log.h>
+#include "RuleParser.h"
+
+/*
+ * Per-server configuration structure.
+ */
+typedef struct {
+    char *errorlog_path;
+    apr_file_t *errorlog_fd;
+    char *nxcorerules_path;
+    apr_file_t *nxcorerules_fd;
+    vector<nxrule_t> rules;
+} server_config_t;
+>>>>>>> fd0f819... scoring system
 
 #endif /* MOD_DEFENDER_HPP */
 

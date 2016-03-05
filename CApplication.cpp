@@ -4,14 +4,18 @@
 #include <apr_strings.h>
 #include <util_script.h>
 #include <iomanip>
-#include <http_protocol.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
+<<<<<<< HEAD
 >>>>>>> 5eee329... naxsi core rules parser
+=======
+#include "mod_defender.hpp"
+>>>>>>> fd0f819... scoring system
 
 int CApplication::RunHandler() {
     int nReturnVal = DECLINED;
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     if (m_pRequestRec->handler != NULL && strcmp(m_pRequestRec->handler, "defender") == 0) {
         ap_rputs("Hello World from DEFENDER", m_pRequestRec);
@@ -19,10 +23,13 @@ int CApplication::RunHandler() {
     }
 =======
 CApplication::CApplication(request_rec* rec, apr_file_t *errorlog_fd, vector<nxrule_t>& rules) {
+=======
+CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
+>>>>>>> fd0f819... scoring system
     r = rec;
-    this->errorlog_fd = errorlog_fd;
+    this->scfg = scfg;
     pool = r->pool;
-    this->rules = rules;
+    this->rules = scfg->rules;
 
     apr_table_do(storeHeaders, &headers, r->headers_in, NULL); // Store every HTTP header received
 
@@ -50,10 +57,10 @@ void CApplication::readPost() {
         char *buffer = (char *) apr_palloc(pool, size + 1);
         apr_brigade_flatten(formPair->value, buffer, &size);
         buffer[len] = 0;
-        body.push_back(pair<const char *, const char *>(apr_pstrdup(pool, formPair->name), buffer));
+        body.emplace_back(apr_pstrdup(pool, formPair->name), buffer);
         i++;
     }
-    std::reverse(body.begin(), body.end());
+//    std::reverse(body.begin(), body.end());
 }
 
 /*
@@ -68,55 +75,66 @@ int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
 
 int CApplication::storeHeaders(void *pVoid, const char *key, const char *value) {
     vector<pair<const char *, const char *>>* kvVector = static_cast<vector<pair<const char *, const char *>>*>(pVoid);
-    if (strcmp(key, "User-Agent") == 0 || strcmp(key, "cookie") == 0)
+    if (strcmp(key, "cookie") == 0)
         kvVector->push_back(pair<const char *, const char *>(key, value));
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-void CApplication::formatAttack(const nxrule_t &rule, string zone, string varname) {
-    if (attack > 0)
-        attacks << "&";
-    for (int i = 0; i < rule.scores.size(); i++) {
-        attacks << "cscore" << i << "=" << rule.scores[i].first << "&";
-        attacks << "score" << i << "=" << rule.scores[i].second << "&";
-    }
-    attacks << "zone" << attack << "=" << zone << "&";
-    attacks << "id" << attack << "=" << rule.id << "&";
-    attacks << "var_name" << attack << "=" << varname;
+string CApplication::formatMatch(const nxrule_t &rule, string zone, string varName) {
+    stringstream ss;
+    if (matchCount > 0)
+        ss << "&";
 
-    attack++;
+    ss << "zone" << matchCount << "=" << zone << "&";
+    ss << "id" << matchCount << "=" << rule.id << "&";
+    ss << "var_name" << matchCount << "=" << varName;
+
+    return ss.str();
 }
 
-void CApplication::checkAttack(const char *varName, const char *value, const char *zone) {
+void CApplication::checkVar(const char *varName, const char *value, const char *zone) {
     // Nx rules check
+    string matches;
     for (const nxrule_t &rule : rules) {
-        bool matched = false;
-        if (rule.IsMatchPaternRx) {
+        bool matched;
+        if (rule.IsMatchPaternRx)
             matched = regex_match(value, rule.matchPaternRx);
-        } else {
-            matched = (strstr(value, rule.matchPaternStr) != NULL);
-        }
+        else
+            matched = (strstr(value, rule.matchPaternStr) != nullptr);
         if (matched) {
-            formatAttack(rule, zone, varName);
+            matches += formatMatch(rule, zone, varName);
+
+            for (int i = 0; i < rule.scores.size(); i++)
+                matchScores[rule.scores[i].first] += rule.scores[i].second;
+
+            matchCount++;
         }
     }
 
-//    struct libinjection_sqli_state state;
-//    size_t slen = strlen(value);
-//    libinjection_sqli_init(&state, value, slen, FLAG_NONE);
-//
-//    if (libinjection_is_sqli(&state)) {
-//        formatAttack("$SQL", 8, zone, 17, varName);
-//    }
-//
-//    if (libinjection_xss(value, slen)) {
-//        formatAttack("$XSS", 8, zone, 18, varName);
-//    }
+    matchVars << matches;
+
+    struct libinjection_sqli_state state;
+    size_t slen = strlen(value);
+    libinjection_sqli_init(&state, value, slen, FLAG_NONE);
+
+    if (libinjection_is_sqli(&state)) {
+        nxrule_t rule;
+        rule.id = 17;
+        rule.scores.emplace_back(apr_pstrdup(pool, "$SQL"), 8);
+        formatMatch(rule, zone, varName);
+    }
+
+    if (libinjection_xss(value, slen)) {
+        nxrule_t rule;
+        rule.id = 18;
+        rule.scores.emplace_back(apr_pstrdup(pool, "$XSS"), 8);
+        formatMatch(rule, zone, varName);
+    }
 }
 
 void CApplication::checkVector(const char *zone, vector<pair<const char *, const char *>> &v) {
     for (int i = 0; i < v.size(); i++) {
-        checkAttack(v[i].first, v[i].second, zone);
+        checkVar(v[i].first, v[i].second, zone);
     }
 }
 
@@ -130,11 +148,11 @@ int CApplication::runHandler() {
         returnVal = OK;
     }
 
-//    checkVector("HEADERS", headers);
+    checkVector("$HEADERS_VAR:Cookie", headers);
     checkVector("ARGS", args);
     checkVector("BODY", body);
     
-    if (attack > 0) {
+    if (matchCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());
         std::tm * ptm = std::localtime(&tt);
         errlog << std::put_time(ptm, "%Y/%m/%d %T") << " ";
@@ -145,7 +163,14 @@ int CApplication::runHandler() {
         errlog << "server=" << r->hostname << "&";
         errlog << "uri=" << r->parsed_uri.path << "&";
 
-        errlog << attacks.str();
+        int i = 0;
+        for (const auto& match : matchScores) {
+            errlog << "cscore" << i << "=" << match.first << "&";
+            errlog << "score" << i << "=" << match.second << "&";
+            i++;
+        }
+
+        errlog << matchVars.str();
 
         errlog << ", ";
 
@@ -159,8 +184,10 @@ int CApplication::runHandler() {
         const string tmp = errlog.str();
         const char* cstr = tmp.c_str();
         apr_size_t cstrlen = strlen(cstr);
-        apr_file_write(errorlog_fd, cstr, &cstrlen);
+        apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
     }
+
+    cerr << "mod_defender: " << matchCount << " match(es)" << endl;
 
     cerr << flush;
 >>>>>>> 5eee329... naxsi core rules parser

@@ -36,8 +36,7 @@ vector<nxrule_t> RuleParser::parse() {
         vector<string> scores = Util::split(score, ',');
         for (const string &sc : scores) {
             pair<string, string> scorepair = Util::splitAtFirst(sc, ':');
-            rule.scores.emplace_back(apr_pstrdup(pool, scorepair.first.c_str()),
-                                     std::stoi(scorepair.second));
+            rule.scores.emplace_back(apr_pstrdup(pool, scorepair.first.c_str()), std::stoi(scorepair.second));
         }
 
         rule.id = Util::intAfter(parts[4], ':');
