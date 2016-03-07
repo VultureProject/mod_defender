@@ -34,8 +34,7 @@ public:
 
     static vector<string> split(string &s, char delim);
     static pair<string, string> splitAtFirst(const string &s, string delim);
-    static string stringAfter(const string &s, char delim);
-    static int intAfter(const string &s, char delim);
+    static vector<int> splitToInt(string &s, char delimiter);
 };
 
 

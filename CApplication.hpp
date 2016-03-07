@@ -50,14 +50,18 @@ private:
     vector<main_rule_t> mainRules;
     unordered_map<string, check_rule_t> checkRules;
     unordered_map<string, int> matchScores;
-    rule_action_t action;
+
+    bool block = false;
+    bool drop = false;
+    bool allow = false;
+    bool log = false;
 
 public:
     CApplication(request_rec* rec, server_config_t* scfg);
     static int storeTable(void*, const char*, const char*);
-    static int storeHeaders(void*, const char*, const char*);
     void readPost();
     int runHandler();
+<<<<<<< HEAD
     void checkVar(const char *varName, const char *value, const char *zone);
     void checkVector(const char *zone, vector<pair<const char *, const char *>> &v);
 <<<<<<< HEAD
@@ -71,6 +75,13 @@ public:
     string formatMatch(const main_rule_t &rule, string zone, string varName);
     void applyCheckRule(const main_rule_t &rule, int matchCount);
 >>>>>>> 40a8641... enhanced conf parsing
+=======
+    string formatMatch(const main_rule_t &rule, const char *zone, const char *varName);
+    void applyCheckRule(const main_rule_t &rule, int matchCount);
+    void checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const main_rule_t &rule);
+    void checkVar(const char *zone, const char *varName, const char *value, const main_rule_t &rule);
+    void applyCheckRuleAction(const rule_action_t &action);
+>>>>>>> 71479aa... added url zone checking
 };
 
 #endif /* CAPPLICATION_HPP */

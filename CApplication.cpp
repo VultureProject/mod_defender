@@ -7,6 +7,7 @@
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 5eee329... naxsi core rules parser
 =======
 #include "mod_defender.hpp"
@@ -18,6 +19,8 @@
 
 int CApplication::RunHandler() {
     int nReturnVal = DECLINED;
+=======
+>>>>>>> 71479aa... added url zone checking
 
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -36,7 +39,7 @@ CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
     this->mainRules = scfg->mainRules;
     this->checkRules = scfg->checkRules;
 
-    apr_table_do(storeHeaders, &headers, r->headers_in, NULL); // Store every HTTP header received
+    apr_table_do(storeTable, &headers, r->headers_in, NULL); // Store every HTTP header received
 
     /* Retrieve GET parameters */
     apr_table_t *GET = NULL;
@@ -78,14 +81,7 @@ int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-int CApplication::storeHeaders(void *pVoid, const char *key, const char *value) {
-    vector<pair<const char *, const char *>>* kvVector = static_cast<vector<pair<const char *, const char *>>*>(pVoid);
-    if (strcmp(key, "cookie") == 0)
-        kvVector->push_back(pair<const char *, const char *>(key, value));
-    return 1; // Zero would stop iterating; any other return value continues
-}
-
-string CApplication::formatMatch(const main_rule_t &rule, string zone, string varName) {
+string CApplication::formatMatch(const main_rule_t &rule, const char* zone, const char* varName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
@@ -97,6 +93,17 @@ string CApplication::formatMatch(const main_rule_t &rule, string zone, string va
     return ss.str();
 }
 
+void CApplication::applyCheckRuleAction(const rule_action_t& action) {
+    if (action == BLOCK)
+        block = true;
+    else if (action == DROP)
+        drop = true;
+    else if (action == ALLOW)
+        allow = true;
+    else if (action == LOG)
+        log = true;
+}
+
 void CApplication::applyCheckRule(const main_rule_t &rule, int matchCount) {
     for (const pair<const char*, int> &tagScore : rule.scores) {
         int& score = matchScores[tagScore.first];
@@ -104,48 +111,46 @@ void CApplication::applyCheckRule(const main_rule_t &rule, int matchCount) {
         check_rule_t& checkRule = checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL) {
             if (score >= checkRule.limit)
-                action = checkRule.action;
+                applyCheckRuleAction(checkRule.action);
         }
         else if (checkRule.comparator == SUP) {
             if (score > checkRule.limit)
-                action = checkRule.action;
+                applyCheckRuleAction(checkRule.action);
         }
         else if (checkRule.comparator <= INF_OR_EQUAL) {
             if (score <= checkRule.limit)
-                action = checkRule.action;
+                applyCheckRuleAction(checkRule.action);
         }
         else if (checkRule.comparator < INF) {
             if (score < checkRule.limit)
-                action = checkRule.action;
+                applyCheckRuleAction(checkRule.action);
         }
     }
 }
 
-void CApplication::checkVar(const char *varName, const char *value, const char *zone) {
+void CApplication::checkVar(const char *zone, const char *varName, const char *value, const main_rule_t &rule) {
     // Nx mainRules check
     string matches;
-    for (const main_rule_t &rule : mainRules) {
-        int matchCount = 0;
-        if (rule.IsMatchPaternRx) {
-            string valueStr = string(value);
-            matchCount += std::distance(
-                    std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.matchPaternRx),
-                    std::sregex_iterator());
+    int matchCount = 0;
+    if (rule.IsMatchPaternRx) {
+        string valueStr = string(value);
+        matchCount += std::distance(
+                std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.matchPaternRx),
+                std::sregex_iterator());
+    }
+    else {
+        char* p = apr_pstrdup(pool, value);
+        size_t len = strlen(rule.matchPaternStr);
+        while ((p = strstr(p, rule.matchPaternStr)) != NULL && value != p) {
+            matchCount++;
+            p += len;
         }
-        else {
-            char* p = apr_pstrdup(pool, value);
-            size_t len = strlen(rule.matchPaternStr);
-            while ((p = strstr(p, rule.matchPaternStr)) != NULL && value != p) {
-                matchCount++;
-                p += len;
-            }
-        }
+    }
 
-        if (matchCount > 0) {
-            matches += formatMatch(rule, zone, varName);
-            applyCheckRule(rule, matchCount);
-            rulesMatchedCount++;
-        }
+    if (matchCount > 0) {
+        matches += formatMatch(rule, zone, varName);
+        applyCheckRule(rule, matchCount);
+        rulesMatchedCount++;
     }
 
     matchVars << matches;
@@ -169,19 +174,30 @@ void CApplication::checkVar(const char *varName, const char *value, const char *
     }
 }
 
-void CApplication::checkVector(const char *zone, vector<pair<const char *, const char *>> &v) {
+void CApplication::checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const main_rule_t &rule) {
     for (int i = 0; i < v.size(); i++) {
-        checkVar(v[i].first, v[i].second, zone);
+        checkVar(zone, v[i].first, v[i].second, rule);
     }
 }
 
 int CApplication::runHandler() {
     int returnVal = DECLINED;
 
-    checkVector("$HEADERS_VAR:Cookie", headers);
-    checkVector("ARGS", args);
-    checkVector("BODY", body);
-    
+    for (const main_rule_t &rule : mainRules) {
+        if (rule.bodyMz) {
+            checkVector("BODY", body, rule);
+        }
+//        if (rule.headersMz) {
+//            checkVector("HEADERS", headers, rule);
+//        }
+        if (rule.urlMz) {
+            checkVar("URL", "", r->parsed_uri.path, rule);
+        }
+        if (rule.argsMz) {
+            checkVector("ARGS", args, rule);
+        }
+    }
+
     if (rulesMatchedCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());
         std::tm * ptm = std::localtime(&tt);
@@ -194,7 +210,7 @@ int CApplication::runHandler() {
         errlog << "server=" << r->hostname << "&";
         errlog << "uri=" << r->parsed_uri.path << "&";
 
-//        errlog << "block=" << block << "&";
+        errlog << "block=" << block << "&";
 
         int i = 0;
         for (const auto& match : matchScores) {
@@ -218,10 +234,12 @@ int CApplication::runHandler() {
         const char* cstr = tmp.c_str();
         apr_size_t cstrlen = strlen(cstr);
         apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
+
+        if (block)
+            returnVal = HTTP_FORBIDDEN;
     }
 
     cerr << "mod_defender: " << rulesMatchedCount << " match(es)" << endl;
-
     cerr << flush;
 >>>>>>> 5eee329... naxsi core rules parser
 

@@ -44,6 +44,20 @@ typedef struct {
     int id;
 } main_rule_t;
 
+typedef struct {
+    vector<int> wlIds;
+    bool IsMatchPaternRx;
+    regex matchPaternRx;
+    const char* matchPaternStr;
+    bool bodyMz = false;
+    bool bodyVarMz = false;
+    bool headersMz = false;
+    bool headersVarMz = false;
+    bool urlMz = false;
+    bool argsMz = false;
+    bool argsVarMz = false;
+} basic_rule_t;
+
 typedef enum {
     SUP_OR_EQUAL,
     SUP,
@@ -67,8 +81,9 @@ typedef struct {
 class NxParser {
 
 public:
-    static vector<main_rule_t> parseMainRules(apr_pool_t *pool, apr_array_header_t *checkRules);
-    static unordered_map<string, check_rule_t> parseCheckRules(apr_array_header_t *checkRules);
+    static vector<main_rule_t> parseMainRules(apr_pool_t *pool, apr_array_header_t *rulesArray);
+    static unordered_map<string, check_rule_t> parseCheckRules(apr_array_header_t *rulesArray);
+    static vector<basic_rule_t> parseBasicRules(apr_pool_t *pool, apr_array_header_t *rulesArray);
 };
 
 

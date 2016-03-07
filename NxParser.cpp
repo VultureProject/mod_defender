@@ -1,11 +1,11 @@
 #include <apr_strings.h>
 #include "NxParser.h"
 
-vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_t *mainRules) {
+vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_t *rulesArray) {
     vector<main_rule_t> rules;
-    for (int i = 0; i < mainRules->nelts; i+=5) {
+    for (int i = 0; i < rulesArray->nelts; i+=5) {
         main_rule_t rule;
-        pair<string, string> matchpatern = Util::splitAtFirst(((const char **) mainRules->elts)[i], ":");
+        pair<string, string> matchpatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
         rule.IsMatchPaternRx = (matchpatern.first == "rx");
         DEBUG_CONF(rule.IsMatchPaternRx << " ");
         if (matchpatern.first == "rx") {
@@ -17,10 +17,10 @@ vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_
             DEBUG_CONF(rule.matchPaternStr << " ");
         }
 
-        rule.msg = apr_pstrdup(pool, Util::stringAfter(((const char **) mainRules->elts)[i+1], ':').c_str());
+        rule.msg = apr_pstrdup(pool, ((const char **) rulesArray->elts)[i+1] + 4);
         DEBUG_CONF(rule.msg << " ");
 
-        string rawMatchZone = Util::stringAfter(((const char **) mainRules->elts)[i+2], ':');
+        string rawMatchZone = ((const char **) rulesArray->elts)[i+2] + 3;
         vector<string> matchZones = Util::split(rawMatchZone, '|');
         for (const string &mz : matchZones) {
             if (mz == "ARGS") {
@@ -41,7 +41,7 @@ vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_
             }
         }
 
-        string score = Util::stringAfter(((const char **) mainRules->elts)[i+3], ':');
+        string score = ((const char **) rulesArray->elts)[i+3] + 2;
         vector<string> scores = Util::split(score, ',');
         for (const string &sc : scores) {
             pair<string, string> scorepair = Util::splitAtFirst(sc, ":");
@@ -49,7 +49,7 @@ vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_
             DEBUG_CONF(scorepair.first << " " << scorepair.second << " ");
         }
 
-        rule.id = Util::intAfter(((const char **) mainRules->elts)[i+4], ':');
+        rule.id = std::stoi(((const char **) rulesArray->elts)[i+4] + 3);
         DEBUG_CONF(rule.id << " ");
 
         rules.push_back(rule);
@@ -58,11 +58,11 @@ vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_
     return rules;
 }
 
-unordered_map<string, check_rule_t> NxParser::parseCheckRules(apr_array_header_t *checkRules) {
+unordered_map<string, check_rule_t> NxParser::parseCheckRules(apr_array_header_t *rulesArray) {
     unordered_map<string, check_rule_t> rules;
-    for (int i = 0; i < checkRules->nelts; i+=2) {
+    for (int i = 0; i < rulesArray->nelts; i+=2) {
         check_rule_t chkrule;
-        string equation = string(((const char **) checkRules->elts)[i]);
+        string equation = string(((const char **) rulesArray->elts)[i]);
         vector<string> eqParts = Util::split(equation, ' ');
 
         string tag = Util::rtrim(eqParts[0]);
@@ -88,7 +88,7 @@ unordered_map<string, check_rule_t> NxParser::parseCheckRules(apr_array_header_t
         chkrule.limit = std::stoi(eqParts[2]);
         DEBUG_CONF(chkrule.limit << " ");
 
-        string action = string(((const char **) checkRules->elts)[i+1]);
+        string action = string(((const char **) rulesArray->elts)[i+1]);
         action.pop_back(); // remove the trailing semicolon
 
         if (action == "BLOCK") {
@@ -97,7 +97,6 @@ unordered_map<string, check_rule_t> NxParser::parseCheckRules(apr_array_header_t
         }
         else if (action == "DROP") {
             chkrule.action = DROP;
-            cerr << "DROP ";
             DEBUG_CONF("DROP ");
         }
         else if (action == "ALLOW") {
@@ -113,4 +112,28 @@ unordered_map<string, check_rule_t> NxParser::parseCheckRules(apr_array_header_t
         DEBUG_CONF(endl);
     }
     return rules;
+}
+
+vector<basic_rule_t> NxParser::parseBasicRules(apr_pool_t *pool, apr_array_header_t *rulesArray) {
+    basic_rule_t rule;
+    for (int i = 0; i < rulesArray->nelts; i+=3) {
+        string rawWhitelist = ((const char **) rulesArray->elts)[i] + 3;
+        rule.wlIds = Util::splitToInt(rawWhitelist, ',');
+        for (const int &id : rule.wlIds) {
+            cerr << id << " ";
+        }
+
+        string rawMatchZone = ((const char **) rulesArray->elts)[i+2] + 3;
+        vector<string> matchZones = Util::split(rawMatchZone, '|');
+        for (const string &mz : matchZones) {
+            if (mz == "ARGS") {
+
+            }
+
+        }
+
+
+        cerr << ((const char **) rulesArray->elts)[i+1] << " ";
+        cerr << endl;
+    }
 }
