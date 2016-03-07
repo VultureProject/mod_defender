@@ -12,37 +12,69 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	$ sudo apt-get install apache2-dev
 	```
 
-2. Compile the source	
+1. Compile the source
 	```sh
 	$ cmake .
 	$ make 
 	```
 
-3. Use APXS to install the module	
+1. Use APXS to install the module
 	```sh
 	$ sudo apxs -n defender -i lib/mod_defender.so
 	```
 
-4. Create its module load file for Apache2	
+1. Create its module load file for Apache2
 	```sh
 	$ sudo echo "LoadModule defender_module /usr/lib/apache2/modules/mod_defender.so" > \
-	$ /etc/apache2/mods-available/defender.load  
+	/etc/apache2/mods-available/defender.load
 	```
-5. Create its module conf file for Apache2
 
-    ```sh
-	$ sudo nano "LoadModule defender_module /etc/apache2/mods-available/defender.conf" > \
-    <IfModule security2_module>
+1. Create its module conf file for Apache2
+	```sh
+    $ sudo cat <<EOT > /etc/apache2/mods-available/defender.conf
+    <IfModule defender_module>
         IncludeOptional /etc/moddefender/*.conf
     </IfModule>
-	```
+    EOT
+    ```
 
-6. Enable the module with apache2
+1. Create Mod Defender conf directory
+    ```sh
+    $ sudo mkdir -p /etc/moddefender/
+    ```
+
+1. Populate it with conf
+	```sh
+	$ sudo wget -O /etc/moddefender/naxsi_core_rules.conf \
+	https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
+	```
+    ```sh
+	$ sudo cat <<EOT > /etc/moddefender/naxsi_rules.conf
+    ## check rules
+    CheckRule "$SQL >= 8" BLOCK;
+    CheckRule "$RFI >= 8" BLOCK;
+    CheckRule "$TRAVERSAL >= 4" BLOCK;
+    CheckRule "$EVADE >= 4" BLOCK;
+    CheckRule "$XSS >= 8" BLOCK;
+    EOT
+    ```
+    ```sh
+    $ sudo cat <<EOT > /etc/moddefender/moddefender.conf
+    # Naxsi match log path
+    NxErrorLog ${APACHE_LOG_DIR}/nxerror.log
+    #Learning mode toggle
+    LearningMode 1
+    #SecRules mode toggle
+    SecRules 1
+    EOT
+    ```
+
+1. Enable the module with apache2
 	```sh
 	$ sudo a2enmod defender  
 	```
 
-7. Reload Apache2 to take effect
+1. Reload Apache2 to take effect
 	```sh
 	$ sudo service apache2 restart
 	```

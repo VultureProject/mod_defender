@@ -42,18 +42,18 @@ private:
     request_rec* r;
     server_config_t* scfg;
     apr_pool_t* pool;
-    stringstream errlog;
     stringstream matchVars;
-    unsigned int matchCount = 0;
+    unsigned int rulesMatchedCount = 0;
     vector<pair<const char *, const char *>> headers;
     vector<pair<const char *, const char *>> args;
     vector<pair<const char *, const char *>> body;
-    vector<nxrule_t> rules;
+    vector<main_rule_t> mainRules;
+    unordered_map<string, check_rule_t> checkRules;
     unordered_map<string, int> matchScores;
+    rule_action_t action;
 
 public:
     CApplication(request_rec* rec, server_config_t* scfg);
-
     static int storeTable(void*, const char*, const char*);
     static int storeHeaders(void*, const char*, const char*);
     void readPost();
@@ -61,11 +61,16 @@ public:
     void checkVar(const char *varName, const char *value, const char *zone);
     void checkVector(const char *zone, vector<pair<const char *, const char *>> &v);
 <<<<<<< HEAD
+<<<<<<< HEAD
     void formatAttack(const nxrule_t &rule, string zone, string varname);
 >>>>>>> 5eee329... naxsi core rules parser
 =======
     string formatMatch(const nxrule_t &rule, string zone, string varName);
 >>>>>>> fd0f819... scoring system
+=======
+    string formatMatch(const main_rule_t &rule, string zone, string varName);
+    void applyCheckRule(const main_rule_t &rule, int matchCount);
+>>>>>>> 40a8641... enhanced conf parsing
 };
 
 #endif /* CAPPLICATION_HPP */

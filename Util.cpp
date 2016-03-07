@@ -16,11 +16,11 @@ vector<string> Util::split(string &s, char delimiter) {
     return v;
 }
 
-pair<string, string> Util::splitAtFirst(const string &s, char delim) {
+pair<string, string> Util::splitAtFirst(const string &s, string delim) {
     pair<string, string> p;
     unsigned long delimpos = s.find(delim);
     p.first = s.substr(0, delimpos);
-    p.second = s.substr(delimpos + 1, s.size());
+    p.second = s.substr(delimpos + delim.length(), s.size());
     return p;
 }
 
@@ -30,7 +30,7 @@ string Util::stringAfter(const string &s, char delim) {
     return r;
 }
 
-unsigned int Util::intAfter(const string &s, char delim) {
+int Util::intAfter(const string &s, char delim) {
     unsigned long delimpos = s.find(delim);
     string r = s.substr(delimpos + 1, s.size());
     return std::stoi(r);

@@ -10,7 +10,11 @@
 >>>>>>> 5eee329... naxsi core rules parser
 =======
 #include "mod_defender.hpp"
+<<<<<<< HEAD
 >>>>>>> fd0f819... scoring system
+=======
+#include "NxParser.h"
+>>>>>>> 40a8641... enhanced conf parsing
 
 int CApplication::RunHandler() {
     int nReturnVal = DECLINED;
@@ -29,7 +33,8 @@ CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
     r = rec;
     this->scfg = scfg;
     pool = r->pool;
-    this->rules = scfg->rules;
+    this->mainRules = scfg->mainRules;
+    this->checkRules = scfg->checkRules;
 
     apr_table_do(storeHeaders, &headers, r->headers_in, NULL); // Store every HTTP header received
 
@@ -80,34 +85,66 @@ int CApplication::storeHeaders(void *pVoid, const char *key, const char *value) 
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-string CApplication::formatMatch(const nxrule_t &rule, string zone, string varName) {
+string CApplication::formatMatch(const main_rule_t &rule, string zone, string varName) {
     stringstream ss;
-    if (matchCount > 0)
+    if (rulesMatchedCount > 0)
         ss << "&";
 
-    ss << "zone" << matchCount << "=" << zone << "&";
-    ss << "id" << matchCount << "=" << rule.id << "&";
-    ss << "var_name" << matchCount << "=" << varName;
+    ss << "zone" << rulesMatchedCount << "=" << zone << "&";
+    ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
+    ss << "var_name" << rulesMatchedCount << "=" << varName;
 
     return ss.str();
 }
 
+void CApplication::applyCheckRule(const main_rule_t &rule, int matchCount) {
+    for (const pair<const char*, int> &tagScore : rule.scores) {
+        int& score = matchScores[tagScore.first];
+        score += tagScore.second * matchCount;
+        check_rule_t& checkRule = checkRules[tagScore.first];
+        if (checkRule.comparator == SUP_OR_EQUAL) {
+            if (score >= checkRule.limit)
+                action = checkRule.action;
+        }
+        else if (checkRule.comparator == SUP) {
+            if (score > checkRule.limit)
+                action = checkRule.action;
+        }
+        else if (checkRule.comparator <= INF_OR_EQUAL) {
+            if (score <= checkRule.limit)
+                action = checkRule.action;
+        }
+        else if (checkRule.comparator < INF) {
+            if (score < checkRule.limit)
+                action = checkRule.action;
+        }
+    }
+}
+
 void CApplication::checkVar(const char *varName, const char *value, const char *zone) {
-    // Nx rules check
+    // Nx mainRules check
     string matches;
-    for (const nxrule_t &rule : rules) {
-        bool matched;
-        if (rule.IsMatchPaternRx)
-            matched = regex_match(value, rule.matchPaternRx);
-        else
-            matched = (strstr(value, rule.matchPaternStr) != nullptr);
-        if (matched) {
+    for (const main_rule_t &rule : mainRules) {
+        int matchCount = 0;
+        if (rule.IsMatchPaternRx) {
+            string valueStr = string(value);
+            matchCount += std::distance(
+                    std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.matchPaternRx),
+                    std::sregex_iterator());
+        }
+        else {
+            char* p = apr_pstrdup(pool, value);
+            size_t len = strlen(rule.matchPaternStr);
+            while ((p = strstr(p, rule.matchPaternStr)) != NULL && value != p) {
+                matchCount++;
+                p += len;
+            }
+        }
+
+        if (matchCount > 0) {
             matches += formatMatch(rule, zone, varName);
-
-            for (int i = 0; i < rule.scores.size(); i++)
-                matchScores[rule.scores[i].first] += rule.scores[i].second;
-
-            matchCount++;
+            applyCheckRule(rule, matchCount);
+            rulesMatchedCount++;
         }
     }
 
@@ -118,14 +155,14 @@ void CApplication::checkVar(const char *varName, const char *value, const char *
     libinjection_sqli_init(&state, value, slen, FLAG_NONE);
 
     if (libinjection_is_sqli(&state)) {
-        nxrule_t rule;
+        main_rule_t rule;
         rule.id = 17;
         rule.scores.emplace_back(apr_pstrdup(pool, "$SQL"), 8);
         formatMatch(rule, zone, varName);
     }
 
     if (libinjection_xss(value, slen)) {
-        nxrule_t rule;
+        main_rule_t rule;
         rule.id = 18;
         rule.scores.emplace_back(apr_pstrdup(pool, "$XSS"), 8);
         formatMatch(rule, zone, varName);
@@ -145,9 +182,10 @@ int CApplication::runHandler() {
     checkVector("ARGS", args);
     checkVector("BODY", body);
     
-    if (matchCount > 0) {
+    if (rulesMatchedCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());
         std::tm * ptm = std::localtime(&tt);
+        stringstream errlog;
         errlog << std::put_time(ptm, "%Y/%m/%d %T") << " ";
         errlog << "[error] ";
         errlog << "NAXSI_FMT: ";
@@ -155,6 +193,8 @@ int CApplication::runHandler() {
         errlog << "ip=" << r->useragent_ip << "&";
         errlog << "server=" << r->hostname << "&";
         errlog << "uri=" << r->parsed_uri.path << "&";
+
+//        errlog << "block=" << block << "&";
 
         int i = 0;
         for (const auto& match : matchScores) {
@@ -180,7 +220,7 @@ int CApplication::runHandler() {
         apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
     }
 
-    cerr << "mod_defender: " << matchCount << " match(es)" << endl;
+    cerr << "mod_defender: " << rulesMatchedCount << " match(es)" << endl;
 
     cerr << flush;
 >>>>>>> 5eee329... naxsi core rules parser

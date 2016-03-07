@@ -1,5 +1,6 @@
 #include "mod_defender.hpp"
 #include "CApplication.hpp"
+#include "NxParser.h"
 
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -42,7 +43,8 @@ apr_status_t defender_delete_capplication_object(void* inPtr) {
 } defender_config_t;
 
 typedef struct {
-    apr_array_header_t *mainRules;
+    apr_array_header_t *mainRulesTable;
+    apr_array_header_t *checkRulesTable;
 } dir_config_t;
 
 /* Custom function to ensure our CApplication get's deleted at the
@@ -82,12 +84,39 @@ int defender_handler(request_rec *r) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
     dir_config_t *dcfg = (dir_config_t *) ap_get_module_config(r->per_dir_config, &defender_module);
 
-//    for (int i = 0; i < dcfg->mainRules->nelts; i++) {
-//        const char *s = ((const char **) dcfg->mainRules->elts)[i];
+//    for (int i = 0; i < dcfg->mainRulesTable->nelts; i++) {
+//        const char *s = ((const char **) dcfg->mainRulesTable->elts)[i];
 //        fprintf(stderr, "%d: %s\n", i, s);
 //    }
-    if (scfg->rules.size() == 0)
-        scfg->rules = NxParser::parseCoreRules(r->pool, dcfg->mainRules);
+    if (scfg->mainRules.size() == 0)
+        scfg->mainRules = NxParser::parseMainRules(r->server->process->pool, dcfg->mainRulesTable);
+    if (scfg->checkRules.size() == 0)
+        scfg->checkRules = NxParser::parseCheckRules(dcfg->checkRulesTable);
+
+//    for (const main_rule_t &rule : scfg->mainRules) {
+//        cerr << rule.IsMatchPaternRx << " ";
+//        const char* matchPaternStr;
+//        if (rule.IsMatchPaternRx)
+//            cerr << "<regex> ";
+//        else
+//            cerr << rule.matchPaternStr << " ";
+//
+//        for (const pair<const char*, int> &sc : rule.scores)
+//            cerr << sc.first << " " << sc.second << " ";
+//
+//        cerr << rule.msg << " ";
+//        cerr << rule.matchZone << " ";
+//        cerr << rule.id << " ";
+//        cerr << endl;
+//    }
+
+//    for (const auto& match : scfg->checkRules) {
+//        cerr <<  match.first << " ";
+//        cerr <<  match.second.comparator << " ";
+//        cerr <<  match.second.limit << " ";
+//        cerr <<  match.second.action << " ";
+//        cerr << endl;
+//    }
 
     /* Create an instance of our application. */
 <<<<<<< HEAD
@@ -219,20 +248,34 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     return NULL; // success
 }
 
-const char *set_nxcore_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
+const char *set_nx_main_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
     dir_config_t *scfg = (dir_config_t *) sconf_;
-    *(const char **) apr_array_push(scfg->mainRules) = apr_pstrdup(scfg->mainRules->pool, arg);
+    *(const char **) apr_array_push(scfg->mainRulesTable) = apr_pstrdup(scfg->mainRulesTable->pool, arg);
 //        return apr_psprintf(cmd->pool, "mod_defender: MainRule variable %s was undefined", arg);
     return NULL;
 }
+
+const char *set_nx_check_rules(cmd_parms *cmd, void *sconf_, const char *arg1, const char *arg2) {
+    dir_config_t *scfg = (dir_config_t *) sconf_;
+    *(const char **) apr_array_push(scfg->checkRulesTable) = apr_pstrdup(scfg->checkRulesTable->pool, arg1);
+    *(const char **) apr_array_push(scfg->checkRulesTable) = apr_pstrdup(scfg->checkRulesTable->pool, arg2);
+    return NULL;
+}
+
+// Dummy function
+const char *skip_directive() { return NULL; }
 
 /**
  * A declaration of the configuration directives that are supported by this module.
  */
 const command_rec directives[] = {
-        {"NxErrorLog", (cmd_func) set_errorlog_path, NULL, RSRC_CONF, TAKE1, "Path to the errorlog file"},
-        {"MainRule",   (cmd_func) set_nxcore_rules,  NULL, RSRC_CONF | ACCESS_CONF, ITERATE, "NxCoreRules directives"},
-//    { "NxCoreRules", (cmd_func) set_nxcorerules_path, NULL, RSRC_CONF, TAKE1, "Path to the naxsi core rules file" },
+        {"NxErrorLog",        (cmd_func) set_errorlog_path, NULL, RSRC_CONF, TAKE1, "Path to the errorlog file"},
+        {"MainRule",          (cmd_func) set_nx_main_rules,  NULL, RSRC_CONF |
+                                                                  ACCESS_CONF,             ITERATE,  "NxCoreRules directives"},
+        {"LearningMode",     (cmd_func) skip_directive,    NULL, RSRC_CONF | ACCESS_CONF, TAKE1, ""},
+        {"SecRules",  (cmd_func) skip_directive,    NULL, RSRC_CONF | ACCESS_CONF, TAKE1,  ""},
+        {"CheckRule",         (cmd_func) set_nx_check_rules,    NULL, RSRC_CONF | ACCESS_CONF, ITERATE2,    "Nx score directives"},
+        {"BasicRule",         (cmd_func) skip_directive,    NULL, RSRC_CONF | ACCESS_CONF, ITERATE,    "Nx score directives"},
         {NULL}
 };
 
@@ -257,18 +300,20 @@ void *create_server_config(apr_pool_t *p, server_rec *s) {
     return scfg;
 }
 
-static void *create_env_dir_config(apr_pool_t *p, char *dummy) {
+static void *create_dir_config(apr_pool_t *p, char *dummy) {
     dir_config_t *dcfg = (dir_config_t *) apr_palloc(p, sizeof(*dcfg));
-    dcfg->mainRules = apr_array_make(p, 209, sizeof(const char *));
+    dcfg->mainRulesTable = apr_array_make(p, 209, sizeof(const char *));
+    dcfg->checkRulesTable = apr_array_make(p, 5, sizeof(const char *));
     return dcfg;
 }
 
-static void *merge_env_dir_configs(apr_pool_t *p, void *basev, void *addv) {
+static void *merge_dir_configs(apr_pool_t *p, void *basev, void *addv) {
     dir_config_t *base = (dir_config_t *) basev;
     dir_config_t *add = (dir_config_t *) addv;
     dir_config_t *res = (dir_config_t *) apr_palloc(p, sizeof(*res));
 
-    res->mainRules = apr_array_copy(p, base->mainRules);
+    res->mainRulesTable = apr_array_copy(p, base->mainRulesTable);
+    res->checkRulesTable = apr_array_copy(p, base->checkRulesTable);
     return res;
 }
 >>>>>>> 90f8163... per-directory config handler
@@ -281,8 +326,8 @@ static void *merge_env_dir_configs(apr_pool_t *p, void *basev, void *addv) {
  */
 module AP_MODULE_DECLARE_DATA defender_module = {
         STANDARD20_MODULE_STUFF,
-        create_env_dir_config,
-        merge_env_dir_configs,
+        create_dir_config,
+        merge_dir_configs,
         create_server_config, // create per-server configuration structures.,
         NULL,
         directives, // configuration directive handlers,

@@ -10,6 +10,14 @@
 #include <iterator>
 #include "Util.h"
 #include <regex>
+#include <unordered_map>
+
+//#define DEBUG_CONFIG
+#ifdef DEBUG_CONFIG
+#define DEBUG_CONF(x) do { std::cerr << x; } while (0)
+#else
+#define DEBUG_CONF(x)
+#endif
 
 using std::pair;
 using std::vector;
@@ -21,21 +29,46 @@ using std::flush;
 using std::istream_iterator;
 using std::istringstream;
 using std::regex;
+using std::unordered_map;
 
 typedef struct {
     bool IsMatchPaternRx;
     regex matchPaternRx;
     const char* matchPaternStr;
-    vector<pair<const char*, unsigned int>> scores;
+    vector<pair<const char*, int>> scores;
     const char* msg;
-    const char* matchZone;
-    unsigned int id;
-} nxrule_t;
+    bool headersMz = false;
+    bool urlMz = false;
+    bool argsMz = false;
+    bool bodyMz = false;
+    int id;
+} main_rule_t;
+
+typedef enum {
+    SUP_OR_EQUAL,
+    SUP,
+    INF_OR_EQUAL,
+    INF
+} comparator_t;
+
+typedef enum {
+    BLOCK,
+    DROP,
+    ALLOW,
+    LOG
+} rule_action_t;
+
+typedef struct {
+    comparator_t comparator;
+    int limit;
+    rule_action_t action;
+} check_rule_t;
 
 class NxParser {
 
 public:
-    static vector<nxrule_t> parseCoreRules(apr_pool_t *pool, apr_array_header_t *mainRules);
+    static vector<main_rule_t> parseMainRules(apr_pool_t *pool, apr_array_header_t *checkRules);
+    static unordered_map<string, check_rule_t> parseCheckRules(apr_array_header_t *checkRules);
 };
 
 
