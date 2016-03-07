@@ -5,15 +5,20 @@ vector<main_rule_t> NxParser::parseMainRules(apr_pool_t *pool, apr_array_header_
     vector<main_rule_t> rules;
     for (int i = 0; i < rulesArray->nelts; i+=5) {
         main_rule_t rule;
-        pair<string, string> matchpatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
-        rule.IsMatchPaternRx = (matchpatern.first == "rx");
-        DEBUG_CONF(rule.IsMatchPaternRx << " ");
-        if (matchpatern.first == "rx") {
-            rule.matchPaternRx = regex(matchpatern.second);
-            DEBUG_CONF(matchpatern.second << " ");
+        if (strcmp(((const char **) rulesArray->elts)[i], "negative") == 0) {
+            rule.negative = true;
+            DEBUG_CONF("negative ");
+            i++;
         }
-        if (matchpatern.first == "str") {
-            rule.matchPaternStr = apr_pstrdup(pool, matchpatern.second.c_str());
+        pair<string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
+        rule.IsMatchPaternRx = (matchPatern.first == "rx");
+        DEBUG_CONF(rule.IsMatchPaternRx << " ");
+        if (matchPatern.first == "rx") {
+            rule.matchPaternRx = regex(matchPatern.second);
+            DEBUG_CONF(matchPatern.second << " ");
+        }
+        if (matchPatern.first == "str") {
+            rule.matchPaternStr = apr_pstrdup(pool, matchPatern.second.c_str());
             DEBUG_CONF(rule.matchPaternStr << " ");
         }
 
@@ -123,17 +128,12 @@ vector<basic_rule_t> NxParser::parseBasicRules(apr_pool_t *pool, apr_array_heade
             cerr << id << " ";
         }
 
-        string rawMatchZone = ((const char **) rulesArray->elts)[i+2] + 3;
+        string rawMatchZone = ((const char **) rulesArray->elts)[i+1] + 3;
         vector<string> matchZones = Util::split(rawMatchZone, '|');
         for (const string &mz : matchZones) {
-            if (mz == "ARGS") {
-
-            }
-
+            cerr << mz << " ";
         }
 
-
-        cerr << ((const char **) rulesArray->elts)[i+1] << " ";
         cerr << endl;
     }
 }

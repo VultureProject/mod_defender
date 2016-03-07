@@ -8,6 +8,7 @@
 #include "libinjection/libinjection.h"
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> 5eee329... naxsi core rules parser
 =======
 #include "mod_defender.hpp"
@@ -31,6 +32,10 @@ int CApplication::RunHandler() {
 =======
 CApplication::CApplication(request_rec* rec, apr_file_t *errorlog_fd, vector<nxrule_t>& rules) {
 =======
+=======
+#include "NxParser.h"
+
+>>>>>>> 10377d6... negative keyword support in MainRule
 CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
 >>>>>>> fd0f819... scoring system
     r = rec;
@@ -106,25 +111,20 @@ void CApplication::applyCheckRuleAction(const rule_action_t& action) {
 
 void CApplication::applyCheckRule(const main_rule_t &rule, int matchCount) {
     for (const pair<const char*, int> &tagScore : rule.scores) {
+        bool matched = false;
         int& score = matchScores[tagScore.first];
         score += tagScore.second * matchCount;
         check_rule_t& checkRule = checkRules[tagScore.first];
-        if (checkRule.comparator == SUP_OR_EQUAL) {
-            if (score >= checkRule.limit)
-                applyCheckRuleAction(checkRule.action);
-        }
-        else if (checkRule.comparator == SUP) {
-            if (score > checkRule.limit)
-                applyCheckRuleAction(checkRule.action);
-        }
-        else if (checkRule.comparator <= INF_OR_EQUAL) {
-            if (score <= checkRule.limit)
-                applyCheckRuleAction(checkRule.action);
-        }
-        else if (checkRule.comparator < INF) {
-            if (score < checkRule.limit)
-                applyCheckRuleAction(checkRule.action);
-        }
+        if (checkRule.comparator == SUP_OR_EQUAL)
+            matched = (score >= checkRule.limit);
+        else if (checkRule.comparator == SUP)
+            matched = (score > checkRule.limit);
+        else if (checkRule.comparator <= INF_OR_EQUAL)
+            matched = (score <= checkRule.limit);
+        else if (checkRule.comparator < INF)
+            matched = (score < checkRule.limit);
+        if (matched)
+            applyCheckRuleAction(checkRule.action);
     }
 }
 
@@ -134,9 +134,13 @@ void CApplication::checkVar(const char *zone, const char *varName, const char *v
     int matchCount = 0;
     if (rule.IsMatchPaternRx) {
         string valueStr = string(value);
-        matchCount += std::distance(
+        std::ptrdiff_t const rxMatchCount(std::distance(
                 std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.matchPaternRx),
-                std::sregex_iterator());
+                std::sregex_iterator()));
+        if (!rule.negative)
+            matchCount += rxMatchCount;
+        if (rule.negative && rxMatchCount == 0)
+            matchCount++;
     }
     else {
         char* p = apr_pstrdup(pool, value);
@@ -182,6 +186,7 @@ void CApplication::checkVector(const char *zone, vector<pair<const char *, const
 
 int CApplication::runHandler() {
     int returnVal = DECLINED;
+    return returnVal;
 
     for (const main_rule_t &rule : mainRules) {
         if (rule.bodyMz) {

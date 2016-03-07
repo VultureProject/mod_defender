@@ -12,7 +12,7 @@
 #include <regex>
 #include <unordered_map>
 
-//#define DEBUG_CONFIG
+#define DEBUG_CONFIG
 #ifdef DEBUG_CONFIG
 #define DEBUG_CONF(x) do { std::cerr << x; } while (0)
 #else
@@ -35,6 +35,7 @@ typedef struct {
     bool IsMatchPaternRx;
     regex matchPaternRx;
     const char* matchPaternStr;
+    bool negative = false;
     vector<pair<const char*, int>> scores;
     const char* msg;
     bool headersMz = false;
@@ -48,6 +49,7 @@ typedef struct {
     vector<int> wlIds;
     bool IsMatchPaternRx;
     regex matchPaternRx;
+    bool negative = false;
     const char* matchPaternStr;
     bool bodyMz = false;
     bool bodyVarMz = false;
