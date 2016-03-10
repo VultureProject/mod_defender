@@ -132,7 +132,7 @@ void CApplication::checkVar(const char *zone, const char *varName, const char *v
     // Nx mainRules check
     string matches;
     int matchCount = 0;
-    if (rule.IsMatchPaternRx) {
+    if (rule.rxMz) {
         string valueStr = string(value);
         std::ptrdiff_t const rxMatchCount(std::distance(
                 std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.matchPaternRx),
@@ -202,6 +202,12 @@ int CApplication::runHandler() {
             checkVector("ARGS", args, rule);
         }
     }
+
+//    if ((!strcmp(r->method, "POST") ||
+//            !strcmp(r->method, "PUT")) &&
+//            ) {
+//
+//    }
 
     if (rulesMatchedCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());

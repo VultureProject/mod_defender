@@ -78,6 +78,11 @@ defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
     return pReturnValue;
 }
 
+int defender_post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s) {
+
+    return OK;
+}
+
 /* Our custom handler
  */
 int defender_handler(request_rec *r) {
@@ -89,17 +94,16 @@ int defender_handler(request_rec *r) {
 //        const char *s = ((const char **) dcfg->mainRulesArray->elts)[i];
 //        fprintf(stderr, "%d: %s\n", i, s);
 //    }
-    if (scfg->mainRules.size() == 0)
-        scfg->mainRules = NxParser::parseMainRules(r->server->process->pool, dcfg->mainRulesArray);
-    if (scfg->checkRules.size() == 0)
-        scfg->checkRules = NxParser::parseCheckRules(dcfg->checkRulesArray);
-
-//    NxParser::parseBasicRules(r->server->process->pool, dcfg->basicRulesArray);
+//    if (scfg->mainRules.size() == 0)
+//        scfg->mainRules = NxParser::parseMainRules(r->server->process->pool, dcfg->mainRulesArray);
+//    if (scfg->checkRules.size() == 0)
+//        scfg->checkRules = NxParser::parseCheckRules(dcfg->checkRulesArray);
+//
+    NxParser::parseBasicRules(r->server->process->pool, dcfg->basicRulesArray);
 
 //    for (const main_rule_t &rule : scfg->mainRules) {
-//        cerr << rule.IsMatchPaternRx << " ";
-//        const char* matchPaternStr;
-//        if (rule.IsMatchPaternRx)
+//        cerr << rule.rxMz << " ";
+//        if (rule.rxMz)
 //            cerr << "<regex> ";
 //        else
 //            cerr << rule.matchPaternStr << " ";
@@ -177,6 +181,7 @@ int defender_handler(request_rec *r) {
 /* Apache callback to register our hooks.
  */
 <<<<<<< HEAD
+<<<<<<< HEAD
 EXTERN_C_FUNC
 void defender_hooks(apr_pool_t* inpPool) {
     ap_hook_handler(defender_handler, NULL, NULL, APR_HOOK_MIDDLE);
@@ -211,6 +216,10 @@ DEFENDERCONFIG_t* defender_get_capplication_ptr(request_rec* inpRequest) {
     DEFENDERCONFIG_t* pReturnValue = NULL;
 =======
 void defender_register_hooks(apr_pool_t *pool) {
+=======
+void defender_register_hooks(apr_pool_t *p) {
+    ap_hook_post_config(defender_post_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
+>>>>>>> f613f2c... added basic rule without matchzone support
     ap_hook_handler(defender_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
@@ -288,6 +297,7 @@ const command_rec directives[] = {
         {NULL}
 };
 
+<<<<<<< HEAD
 /**
  * Creates the per-server configuration records.
  */
@@ -310,6 +320,9 @@ void *create_server_config(apr_pool_t *p, server_rec *s) {
 }
 
 static void *create_dir_config(apr_pool_t *p, char *dummy) {
+=======
+void *create_dir_config(apr_pool_t *p, char *dummy) {
+>>>>>>> f613f2c... added basic rule without matchzone support
     dir_config_t *dcfg = (dir_config_t *) apr_palloc(p, sizeof(*dcfg));
     dcfg->mainRulesArray = apr_array_make(p, 209, sizeof(const char *));
     dcfg->checkRulesArray = apr_array_make(p, 5, sizeof(const char *));
@@ -317,7 +330,7 @@ static void *create_dir_config(apr_pool_t *p, char *dummy) {
     return dcfg;
 }
 
-static void *merge_dir_configs(apr_pool_t *p, void *basev, void *addv) {
+void *merge_dir_configs(apr_pool_t *p, void *basev, void *addv) {
     dir_config_t *base = (dir_config_t *) basev;
     dir_config_t *add = (dir_config_t *) addv;
     dir_config_t *res = (dir_config_t *) apr_palloc(p, sizeof(*res));
@@ -329,9 +342,23 @@ static void *merge_dir_configs(apr_pool_t *p, void *basev, void *addv) {
 >>>>>>> 90f8163... per-directory config handler
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     return pReturnValue;
 }
 =======
+=======
+/**
+ * Creates the per-server configuration records.
+ */
+void *create_server_config(apr_pool_t *p, server_rec *s) {
+    // allocate space for the configuration structure from the provided pool p.
+    server_config_t *scfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
+
+    // return the new server configuration structure.
+    return scfg;
+}
+
+>>>>>>> f613f2c... added basic rule without matchzone support
 /* Our standard module definition.
  */
 module AP_MODULE_DECLARE_DATA defender_module = {

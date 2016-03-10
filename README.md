@@ -51,11 +51,11 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     ```sh
 	$ cat <<EOT | sudo tee /etc/moddefender/naxsi_rules.conf > /dev/null
     ## check rules
-    CheckRule "$SQL >= 8" BLOCK;
-    CheckRule "$RFI >= 8" BLOCK;
-    CheckRule "$TRAVERSAL >= 4" BLOCK;
-    CheckRule "$EVADE >= 4" BLOCK;
-    CheckRule "$XSS >= 8" BLOCK;
+    CheckRule "\$SQL >= 8" BLOCK;
+    CheckRule "\$RFI >= 8" BLOCK;
+    CheckRule "\$TRAVERSAL >= 4" BLOCK;
+    CheckRule "\$EVADE >= 4" BLOCK;
+    CheckRule "\$XSS >= 8" BLOCK;
     EOT
     ```
     ```sh

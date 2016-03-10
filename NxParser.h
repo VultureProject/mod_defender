@@ -12,11 +12,25 @@
 #include <regex>
 #include <unordered_map>
 
-#define DEBUG_CONFIG
-#ifdef DEBUG_CONFIG
-#define DEBUG_CONF(x) do { std::cerr << x; } while (0)
+//#define DEBUG_CONFIG_MAINRULE
+#ifdef DEBUG_CONFIG_MAINRULE
+#define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
-#define DEBUG_CONF(x)
+#define DEBUG_CONF_MR(x)
+#endif
+
+//#define DEBUG_CONFIG_CHECKRULE
+#ifdef DEBUG_CONFIG_CHECKRULE
+#define DEBUG_CONF_CR(x) do { std::cerr << x; } while (0)
+#else
+#define DEBUG_CONF_CR(x)
+#endif
+
+#define DEBUG_CONFIG_BASICRULE
+#ifdef DEBUG_CONFIG_BASICRULE
+#define DEBUG_CONF_BR(x) do { std::cerr << x; } while (0)
+#else
+#define DEBUG_CONF_BR(x)
 #endif
 
 using std::pair;
@@ -32,7 +46,25 @@ using std::regex;
 using std::unordered_map;
 
 typedef struct {
-    bool IsMatchPaternRx;
+    bool rxMz = false;
+    regex matchPaternRx;
+    bool negative = false;
+    const char* matchPaternStr;
+    bool bodyMz = false;
+    bool bodyVarMz = false;
+    bool headersMz = false;
+    bool headersVarMz = false;
+    bool urlMz = false;
+    bool urlSpecifiedMz = false;
+    bool argsMz = false;
+    bool argsVarMz = false;
+    bool fileExtMz = false;
+    bool customZone = false;
+    bool targetName = false;
+} basic_rule_t;
+
+typedef struct {
+    bool rxMz;
     regex matchPaternRx;
     const char* matchPaternStr;
     bool negative = false;
@@ -43,22 +75,8 @@ typedef struct {
     bool argsMz = false;
     bool bodyMz = false;
     int id;
+    vector<basic_rule_t> brs;
 } main_rule_t;
-
-typedef struct {
-    vector<int> wlIds;
-    bool IsMatchPaternRx;
-    regex matchPaternRx;
-    bool negative = false;
-    const char* matchPaternStr;
-    bool bodyMz = false;
-    bool bodyVarMz = false;
-    bool headersMz = false;
-    bool headersVarMz = false;
-    bool urlMz = false;
-    bool argsMz = false;
-    bool argsVarMz = false;
-} basic_rule_t;
 
 typedef enum {
     SUP_OR_EQUAL,
@@ -79,6 +97,10 @@ typedef struct {
     int limit;
     rule_action_t action;
 } check_rule_t;
+
+typedef struct {
+    vector<int> wlIds;
+} http_rule_t;
 
 class NxParser {
 
