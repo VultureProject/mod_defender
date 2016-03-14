@@ -1,6 +1,5 @@
 #include "mod_defender.hpp"
 #include "CApplication.hpp"
-#include "NxParser.h"
 
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -78,11 +77,6 @@ defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
     return pReturnValue;
 }
 
-int defender_post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s) {
-
-    return OK;
-}
-
 /* Our custom handler
  */
 int defender_handler(request_rec *r) {
@@ -101,29 +95,30 @@ int defender_handler(request_rec *r) {
 //
     NxParser::parseBasicRules(r->server->process->pool, dcfg->basicRulesArray);
 
-//    for (const main_rule_t &rule : scfg->mainRules) {
-//        cerr << rule.rxMz << " ";
+//    for (const main_rule_t &rule : dcfg->mainRules) {
+//        fprintf(stderr, "%d ", rule.rxMz);
 //        if (rule.rxMz)
-//            cerr << "<regex> ";
+//            fprintf(stderr, "%s ", "<regex> ");
 //        else
-//            cerr << rule.matchPaternStr << " ";
+//            fprintf(stderr, "%s ", rule.matchPaternStr);
 //
 //        for (const pair<const char*, int> &sc : rule.scores)
-//            cerr << sc.first << " " << sc.second << " ";
+//            fprintf(stderr, "%s %d ", sc.first, sc.second);
 //
-//        cerr << rule.msg << " ";
-//        cerr << rule.matchZone << " ";
-//        cerr << rule.id << " ";
-//        cerr << endl;
+//        fprintf(stderr, "%s ", rule.msg);
+//        fprintf(stderr, "%d ", rule.id);
+//        fprintf(stderr, "\n");
 //    }
 
-//    for (const auto& match : scfg->checkRules) {
+//    for (const auto& match : dcfg->checkRules) {
 //        cerr <<  match.first << " ";
 //        cerr <<  match.second.comparator << " ";
 //        cerr <<  match.second.limit << " ";
 //        cerr <<  match.second.action << " ";
 //        cerr << endl;
 //    }
+
+    return DECLINED;
 
     /* Create an instance of our application. */
 <<<<<<< HEAD
@@ -218,8 +213,11 @@ DEFENDERCONFIG_t* defender_get_capplication_ptr(request_rec* inpRequest) {
 void defender_register_hooks(apr_pool_t *pool) {
 =======
 void defender_register_hooks(apr_pool_t *p) {
+<<<<<<< HEAD
     ap_hook_post_config(defender_post_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
 >>>>>>> f613f2c... added basic rule without matchzone support
+=======
+>>>>>>> 7e29a68... custom rule struct added
     ap_hook_handler(defender_handler, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
@@ -263,7 +261,6 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
 const char *set_nx_main_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
     dir_config_t *scfg = (dir_config_t *) sconf_;
     *(const char **) apr_array_push(scfg->mainRulesArray) = apr_pstrdup(scfg->mainRulesArray->pool, arg);
-//        return apr_psprintf(cmd->pool, "mod_defender: MainRule variable %s was undefined", arg);
     return NULL;
 }
 
@@ -274,7 +271,7 @@ const char *set_nx_check_rules(cmd_parms *cmd, void *sconf_, const char *arg1, c
     return NULL;
 }
 
-const char *set_nx_basic_rules(cmd_parms *cmd, void *sconf_, const char *arg, const char *arg2) {
+const char *set_nx_basic_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
     dir_config_t *scfg = (dir_config_t *) sconf_;
     *(const char **) apr_array_push(scfg->basicRulesArray) = apr_pstrdup(scfg->basicRulesArray->pool, arg);
     return NULL;
@@ -297,6 +294,7 @@ const command_rec directives[] = {
         {NULL}
 };
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 /**
  * Creates the per-server configuration records.
@@ -323,6 +321,9 @@ static void *create_dir_config(apr_pool_t *p, char *dummy) {
 =======
 void *create_dir_config(apr_pool_t *p, char *dummy) {
 >>>>>>> f613f2c... added basic rule without matchzone support
+=======
+void *create_dir_config(apr_pool_t *p, char *context) {
+>>>>>>> 7e29a68... custom rule struct added
     dir_config_t *dcfg = (dir_config_t *) apr_palloc(p, sizeof(*dcfg));
     dcfg->mainRulesArray = apr_array_make(p, 209, sizeof(const char *));
     dcfg->checkRulesArray = apr_array_make(p, 5, sizeof(const char *));

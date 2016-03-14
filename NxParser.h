@@ -46,36 +46,17 @@ using std::regex;
 using std::unordered_map;
 
 typedef struct {
-    bool rxMz = false;
+    bool rxMz:1;
     regex matchPaternRx;
+    const char *matchPaternStr;
     bool negative = false;
-    const char* matchPaternStr;
-    bool bodyMz = false;
-    bool bodyVarMz = false;
-    bool headersMz = false;
-    bool headersVarMz = false;
-    bool urlMz = false;
-    bool urlSpecifiedMz = false;
-    bool argsMz = false;
-    bool argsVarMz = false;
-    bool fileExtMz = false;
-    bool customZone = false;
-    bool targetName = false;
-} basic_rule_t;
-
-typedef struct {
-    bool rxMz;
-    regex matchPaternRx;
-    const char* matchPaternStr;
-    bool negative = false;
-    vector<pair<const char*, int>> scores;
-    const char* msg;
+    vector<pair<const char *, int>> scores;
+    const char *msg;
     bool headersMz = false;
     bool urlMz = false;
     bool argsMz = false;
     bool bodyMz = false;
     int id;
-    vector<basic_rule_t> brs;
 } main_rule_t;
 
 typedef enum {
@@ -99,6 +80,49 @@ typedef struct {
 } check_rule_t;
 
 typedef struct {
+    bool bodyVar = false; // match in [name] var of body
+    bool headersVar = false; // match in [name] var of headers
+    bool argsVar = false; // match in [name] var of args
+    bool specificUrl = false; // match on URL [name]
+    const char *target; // to be used for string match zones
+    regex *targetRx; // to be used for regexed match zones
+} custom_rule_location_t;
+
+typedef struct {
+    bool body = false; // match in full body (POST DATA)
+    bool bodyVar = false; // match in [name] var of body
+    bool headers = false; // match in all headers
+    bool headersVar = false; // match in [name] var of headers
+    bool url = false; // match in URI
+    bool args = false; // match in args (bla.php?<ARGS>)
+    bool argsVar = false; // match in [name] var of args
+    bool flags = false; // match on a global flag : weird_request, big_body etc.
+    bool fileExt = false; // match on file upload extension
+    /* set if defined "custom" match zone (GET_VAR/POST_VAR/...)  */
+    vector<int> ids;
+    const char *target;
+} whitelist_location_t;
+
+typedef struct {
+    bool rxMz = false;
+    regex matchPaternRx;
+    bool negative = false;
+    const char *matchPaternStr;
+    bool bodyMz = false;
+    bool bodyVarMz = false;
+    bool headersMz = false;
+    bool headersVarMz = false;
+    bool urlMz = false;
+    bool urlSpecifiedMz = false;
+    bool argsMz = false;
+    bool argsVarMz = false;
+    bool fileExtMz = false;
+    bool customZone = false;
+    bool targetName = false;
+    vector<custom_rule_location_t> customLocations;
+} basic_rule_t;
+
+typedef struct {
     vector<int> wlIds;
 } http_rule_t;
 
@@ -106,7 +130,9 @@ class NxParser {
 
 public:
     static vector<main_rule_t> parseMainRules(apr_pool_t *pool, apr_array_header_t *rulesArray);
+
     static unordered_map<string, check_rule_t> parseCheckRules(apr_array_header_t *rulesArray);
+
     static vector<basic_rule_t> parseBasicRules(apr_pool_t *pool, apr_array_header_t *rulesArray);
 };
 

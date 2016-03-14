@@ -186,7 +186,6 @@ void CApplication::checkVector(const char *zone, vector<pair<const char *, const
 
 int CApplication::runHandler() {
     int returnVal = DECLINED;
-    return returnVal;
 
     for (const main_rule_t &rule : mainRules) {
         if (rule.bodyMz) {

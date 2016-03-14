@@ -140,7 +140,7 @@ vector <basic_rule_t> NxParser::parseBasicRules(apr_pool_t *pool, apr_array_head
         }
 
         string rawMatchZone = ((const char **) rulesArray->elts)[i + 1] + 3;
-        vector <string> matchZones = Util::split(rawMatchZone, '|');
+        vector<string> matchZones = Util::split(rawMatchZone, '|');
         for (const string &mz : matchZones) {
             if (mz[0] != '$') {
                 if (mz == "ARGS") {
@@ -163,62 +163,76 @@ vector <basic_rule_t> NxParser::parseBasicRules(apr_pool_t *pool, apr_array_head
                     rule.fileExtMz = true;
                     DEBUG_CONF_BR("FILE_EXT ");
                 }
+                else if (mz == "NAME") {
+                    rule.targetName = true;
+                    DEBUG_CONF_BR("NAME ");
+                }
             }
             else {
+                custom_rule_location_t customRule;
                 rule.customZone = true;
                 pair<string, string> cmz = Util::splitAtFirst(mz, ":");
 
                 if (cmz.first == "$ARGS_VAR") {
+                    customRule.argsVar = true;
                     rule.argsVarMz = true;
                     DEBUG_CONF_BR("$ARGS_VAR ");
                 }
                 else if (cmz.first == "$HEADERS_VAR") {
+                    customRule.headersVar = true;
                     rule.headersVarMz = true;
                     DEBUG_CONF_BR("$HEADERS_VAR ");
                 }
                 else if (cmz.first == "$URL") {
+                    customRule.specificUrl = true;
                     rule.urlSpecifiedMz = true;
                     DEBUG_CONF_BR("$URL ");
                 }
                 else if (cmz.first == "$BODY_VAR") {
-                    rule.argsVarMz = true;
+                    customRule.bodyVar = true;
+                    rule.bodyVarMz = true;
                     DEBUG_CONF_BR("$BODY_VAR ");
                 }
 
                 else if (cmz.first == "$ARGS_VAR_X") {
+                    customRule.argsVar = true;
                     rule.argsVarMz = true;
                     rule.rxMz = true;
                     DEBUG_CONF_BR("$ARGS_VAR_X ");
                 }
                 else if (cmz.first == "$HEADERS_VAR_X") {
+                    customRule.headersVar = true;
                     rule.headersVarMz = true;
                     rule.rxMz = true;
                     DEBUG_CONF_BR("$HEADERS_VAR_X ");
                 }
                 else if (cmz.first == "$URL_X") {
+                    customRule.specificUrl = true;
                     rule.urlSpecifiedMz = true;
                     rule.rxMz = true;
                     DEBUG_CONF_BR("$URL_X ");
                 }
                 else if (cmz.first == "$BODY_VAR_X") {
+                    customRule.bodyVar = true;
                     rule.bodyVarMz = true;
                     rule.rxMz = true;
                     DEBUG_CONF_BR("$BODY_VAR_X ");
                 }
 
                 if (!rule.rxMz) {
-                    rule.matchPaternStr = cmz.second.c_str();
+                    customRule.target = apr_pstrdup(pool, cmz.second.c_str());
+                    rule.matchPaternStr = apr_pstrdup(pool, cmz.second.c_str());
                     DEBUG_CONF_BR("(rx)" << cmz.second << " ");
                 }
                 else {
                     rule.matchPaternRx = regex(cmz.second);
                     DEBUG_CONF_BR("(str)" << cmz.second << " ");
                 }
+                rule.customLocations.push_back(customRule);
             }
         }
 
         rules.push_back(rule);
-
         DEBUG_CONF_BR(endl);
     }
     return rules;
