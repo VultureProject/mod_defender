@@ -12,7 +12,7 @@
 #include <regex>
 #include <unordered_map>
 
-//#define DEBUG_CONFIG_MAINRULE
+#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
 #define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
@@ -195,7 +195,6 @@ typedef struct {
 class NxParser {
 private:
     apr_pool_t *p;
-    vector<http_rule_t> mainRules;
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
 
 public:
@@ -215,19 +214,12 @@ public:
     vector<http_rule_t> disabled_rules; // rules that are globally disabled in one location
 
     NxParser(apr_pool_t *p);
-
     void parseMainRules(apr_array_header_t *rulesArray);
-
     void parseCheckRules(apr_array_header_t *rulesArray);
-
     void parseBasicRules(apr_array_header_t *rulesArray);
-
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
-
     void createHashTables();
-
     void wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
-
     void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
 };
 

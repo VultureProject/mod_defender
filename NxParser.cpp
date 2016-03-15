@@ -15,9 +15,9 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
             DEBUG_CONF_MR("negative ");
             i++;
         }
-        pair <string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
+        pair<string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
         rule.br.rxMz = (matchPatern.first == "rx");
-        DEBUG_CONF_MR(rule.br.rxMz << " ");
+        DEBUG_CONF_MR((rule.br.rxMz ? "rx " : "str "));
         if (matchPatern.first == "rx") {
             rule.br.matchPaternRx = regex(matchPatern.second);
             DEBUG_CONF_MR(matchPatern.second << " ");
@@ -34,7 +34,7 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
         parseMatchZone(rule, rawMatchZone);
 
         string score = ((const char **) rulesArray->elts)[i + 3] + 2;
-        vector <string> scores = Util::split(score, ',');
+        vector<string> scores = Util::split(score, ',');
         for (const string &sc : scores) {
             pair<string, string> scorepair = Util::splitAtFirst(sc, ":");
             rule.scores.emplace_back(apr_pstrdup(p, scorepair.first.c_str()), std::stoi(scorepair.second));
@@ -44,7 +44,40 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
         rule.id = std::stoi(((const char **) rulesArray->elts)[i + 4] + 3);
         DEBUG_CONF_MR(rule.id << " ");
 
-        mainRules.push_back(rule);
+        if (rule.br.headersMz) {
+            headerRules.push_back(rule);
+            DEBUG_CONF_MR("[header] ");
+        }
+        if (rule.br.bodyMz || rule.br.bodyVarMz) { // push in body match rules (POST/PUT)
+            bodyRules.push_back(rule);
+            DEBUG_CONF_MR("[body] ");
+        }
+        if (rule.br.urlMz) { // push in generic rules, as it's matching the URI
+            genericRules.push_back(rule);
+            DEBUG_CONF_MR("[generic] ");
+        }
+        if (rule.br.argsMz || rule.br.argsVarMz) { // push in GET arg rules, but we should push in POST rules too
+            getRules.push_back(rule);
+            DEBUG_CONF_MR("[get] ");
+        }
+        /* push in custom locations. It's a rule matching a VAR_NAME or an EXACT_URI :
+            - GET_VAR, POST_VAR, URI */
+        if (rule.br.customLocation) {
+            for (const custom_rule_location_t& loc : rule.br.customLocations) {
+                if (loc.argsVar) {
+                    getRules.push_back(rule);
+                    DEBUG_CONF_MR("[get] ");
+                }
+                if (loc.bodyVar) {
+                    bodyRules.push_back(rule);
+                    DEBUG_CONF_MR("[body] ");
+                }
+                if (loc.headersVar) {
+                    headerRules.push_back(rule);
+                    DEBUG_CONF_MR("[header] ");
+                }
+            }
+        }
         DEBUG_CONF_MR(endl);
     }
 }
@@ -54,7 +87,7 @@ void NxParser::parseCheckRules(apr_array_header_t *rulesArray) {
         DEBUG_CONF_CR("CheckRule ");
         check_rule_t chkrule;
         string equation = string(((const char **) rulesArray->elts)[i]);
-        vector <string> eqParts = Util::split(equation, ' ');
+        vector<string> eqParts = Util::split(equation, ' ');
 
         string tag = Util::rtrim(eqParts[0]);
         DEBUG_CONF_CR(tag << " ");
@@ -134,7 +167,7 @@ void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
     }
 }
 
-void NxParser::parseMatchZone(http_rule_t& rule, string& rawMatchZone) {
+void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
     vector<string> matchZones = Util::split(rawMatchZone, '|');
     for (const string &mz : matchZones) {
         if (mz[0] != '$') {
@@ -231,7 +264,7 @@ void NxParser::parseMatchZone(http_rule_t& rule, string& rawMatchZone) {
 
 /* check rule, returns associed zone, as well as location index.
   location index refers to $URL:bla or $ARGS_VAR:bla */
-void NxParser::wlrIdentify(const http_rule_t& curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
+void NxParser::wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
     if (curr.br.bodyMz || curr.br.bodyVarMz)
         zone = BODY;
     else if (curr.br.headersMz || curr.br.bodyVarMz)
@@ -244,7 +277,7 @@ void NxParser::wlrIdentify(const http_rule_t& curr, enum DUMMY_MATCH_ZONE &zone,
         zone = FILE_EXT;
 
     for (int i = 0; i < curr.br.customLocations.size(); i++) {
-        const custom_rule_location_t& custLoc = curr.br.customLocations[i];
+        const custom_rule_location_t &custLoc = curr.br.customLocations[i];
         if (custLoc.specificUrl) {
             uri_idx = i;
         }
@@ -263,7 +296,8 @@ void NxParser::wlrIdentify(const http_rule_t& curr, enum DUMMY_MATCH_ZONE &zone,
     }
 }
 
-void NxParser::wlrFind(const http_rule_t& curr, whitelist_rule_t& father_wlr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
+void NxParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx,
+                       int &name_idx) {
     string fullname = "";
     if (curr.br.targetName) // if WL targets variable name instead of content, prefix hash with '#'
         fullname += "#";
@@ -279,7 +313,7 @@ void NxParser::wlrFind(const http_rule_t& curr, whitelist_rule_t& father_wlr, en
         fullname += curr.br.customLocations[name_idx].target;
     }
 
-    for (const whitelist_rule_t& wlr : tmp_wlr) {
+    for (const whitelist_rule_t &wlr : tmp_wlr) {
         if (wlr.name == fullname) {
             father_wlr = wlr;
             return;
@@ -292,9 +326,11 @@ void NxParser::wlrFind(const http_rule_t& curr, whitelist_rule_t& father_wlr, en
     */
     father_wlr.name = fullname;
     father_wlr.zone = zone;
+    /* If there is URI and no name idx, specify it,
+	 so that WL system won't get fooled by an argname like an URL */
     if (uri_idx != -1 && name_idx == -1)
         father_wlr.uriOnly = true;
-    if (curr.br.targetName)
+    if (curr.br.targetName) // If target_name is present in son, report it
         father_wlr.targetName = curr.br.targetName;
 }
 
@@ -312,12 +348,12 @@ void NxParser::wlrFind(const http_rule_t& curr, whitelist_rule_t& father_wlr, en
 ** as well as rules targetting the same argument name / zone.
 */
 void NxParser::createHashTables() {
-    for (http_rule_t& curr_r : whitelistRules) {
+    for (http_rule_t &curr_r : whitelistRules) {
         int uri_idx = -1, name_idx = -1;
         enum DUMMY_MATCH_ZONE zone = UNKNOWN;
 
         if (curr_r.br.customLocations.size() == 0) {
-//            wlrPushDisabled(curr_r);
+            disabled_rules.push_back(curr_r);
             continue;
         }
         wlrIdentify(curr_r, zone, uri_idx, name_idx);
@@ -344,7 +380,7 @@ void NxParser::createHashTables() {
         tmp_wlr.push_back(father_wl);
     }
 
-    for (const whitelist_rule_t& wlr : tmp_wlr) {
+    for (const whitelist_rule_t &wlr : tmp_wlr) {
         switch (wlr.zone) {
             case FILE_EXT:
             case BODY:
