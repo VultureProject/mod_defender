@@ -88,12 +88,16 @@ int defender_handler(request_rec *r) {
 //        const char *s = ((const char **) dcfg->mainRulesArray->elts)[i];
 //        fprintf(stderr, "%d: %s\n", i, s);
 //    }
+
+    scfg->parser = NxParser(r->server->process->pool);
+
 //    if (scfg->mainRules.size() == 0)
-//        scfg->mainRules = NxParser::parseMainRules(r->server->process->pool, dcfg->mainRulesArray);
+        scfg->parser.parseMainRules(dcfg->mainRulesArray);
 //    if (scfg->checkRules.size() == 0)
-//        scfg->checkRules = NxParser::parseCheckRules(dcfg->checkRulesArray);
+        scfg->parser.parseCheckRules(dcfg->checkRulesArray);
 //
-    NxParser::parseBasicRules(r->server->process->pool, dcfg->basicRulesArray);
+    scfg->parser.parseBasicRules(dcfg->basicRulesArray);
+    scfg->parser.createHashTables();
 
 //    for (const main_rule_t &rule : dcfg->mainRules) {
 //        fprintf(stderr, "%d ", rule.rxMz);

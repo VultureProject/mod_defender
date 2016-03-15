@@ -34,6 +34,7 @@ CApplication::CApplication(request_rec* rec, apr_file_t *errorlog_fd, vector<nxr
 =======
 =======
 #include "NxParser.h"
+#include "mod_defender.hpp"
 
 >>>>>>> 10377d6... negative keyword support in MainRule
 CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
@@ -41,8 +42,7 @@ CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
     r = rec;
     this->scfg = scfg;
     pool = r->pool;
-    this->mainRules = scfg->mainRules;
-    this->checkRules = scfg->checkRules;
+    this->checkRules = scfg->parser.checkRules;
 
     apr_table_do(storeTable, &headers, r->headers_in, NULL); // Store every HTTP header received
 
@@ -86,7 +86,7 @@ int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-string CApplication::formatMatch(const main_rule_t &rule, const char* zone, const char* varName) {
+string CApplication::formatMatch(const http_rule_t &rule, const char* zone, const char* varName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
@@ -109,7 +109,7 @@ void CApplication::applyCheckRuleAction(const rule_action_t& action) {
         log = true;
 }
 
-void CApplication::applyCheckRule(const main_rule_t &rule, int matchCount) {
+void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
     for (const pair<const char*, int> &tagScore : rule.scores) {
         bool matched = false;
         int& score = matchScores[tagScore.first];
@@ -128,24 +128,24 @@ void CApplication::applyCheckRule(const main_rule_t &rule, int matchCount) {
     }
 }
 
-void CApplication::checkVar(const char *zone, const char *varName, const char *value, const main_rule_t &rule) {
+void CApplication::checkVar(const char *zone, const char *varName, const char *value, const http_rule_t &rule) {
     // Nx mainRules check
     string matches;
     int matchCount = 0;
-    if (rule.rxMz) {
+    if (rule.br.rxMz) {
         string valueStr = string(value);
         std::ptrdiff_t const rxMatchCount(std::distance(
-                std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.matchPaternRx),
+                std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.br.matchPaternRx),
                 std::sregex_iterator()));
-        if (!rule.negative)
+        if (!rule.br.negative)
             matchCount += rxMatchCount;
-        if (rule.negative && rxMatchCount == 0)
+        if (rule.br.negative && rxMatchCount == 0)
             matchCount++;
     }
     else {
         char* p = apr_pstrdup(pool, value);
-        size_t len = strlen(rule.matchPaternStr);
-        while ((p = strstr(p, rule.matchPaternStr)) != NULL && value != p) {
+        size_t len = strlen(rule.br.matchPaternStr);
+        while ((p = strstr(p, rule.br.matchPaternStr)) != NULL && value != p) {
             matchCount++;
             p += len;
         }
@@ -159,26 +159,26 @@ void CApplication::checkVar(const char *zone, const char *varName, const char *v
 
     matchVars << matches;
 
-    struct libinjection_sqli_state state;
-    size_t slen = strlen(value);
-    libinjection_sqli_init(&state, value, slen, FLAG_NONE);
-
-    if (libinjection_is_sqli(&state)) {
-        main_rule_t rule;
-        rule.id = 17;
-        rule.scores.emplace_back(apr_pstrdup(pool, "$SQL"), 8);
-        formatMatch(rule, zone, varName);
-    }
-
-    if (libinjection_xss(value, slen)) {
-        main_rule_t rule;
-        rule.id = 18;
-        rule.scores.emplace_back(apr_pstrdup(pool, "$XSS"), 8);
-        formatMatch(rule, zone, varName);
-    }
+//    struct libinjection_sqli_state state;
+//    size_t slen = strlen(value);
+//    libinjection_sqli_init(&state, value, slen, FLAG_NONE);
+//
+//    if (libinjection_is_sqli(&state)) {
+//        http_rule_t rule;
+//        rule.id = 17;
+//        rule.scores.emplace_back(apr_pstrdup(pool, "$SQL"), 8);
+//        formatMatch(rule, zone, varName);
+//    }
+//
+//    if (libinjection_xss(value, slen)) {
+//        http_rule_t rule;
+//        rule.id = 18;
+//        rule.scores.emplace_back(apr_pstrdup(pool, "$XSS"), 8);
+//        formatMatch(rule, zone, varName);
+//    }
 }
 
-void CApplication::checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const main_rule_t &rule) {
+void CApplication::checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule) {
     for (int i = 0; i < v.size(); i++) {
         checkVar(zone, v[i].first, v[i].second, rule);
     }
@@ -187,20 +187,20 @@ void CApplication::checkVector(const char *zone, vector<pair<const char *, const
 int CApplication::runHandler() {
     int returnVal = DECLINED;
 
-    for (const main_rule_t &rule : mainRules) {
-        if (rule.bodyMz) {
-            checkVector("BODY", body, rule);
-        }
-//        if (rule.headersMz) {
-//            checkVector("HEADERS", headers, rule);
+//    for (const http_rule_t &rule : mainRules) {
+//        if (rule.br.bodyMz) {
+//            checkVector("BODY", body, rule);
 //        }
-        if (rule.urlMz) {
-            checkVar("URL", "", r->parsed_uri.path, rule);
-        }
-        if (rule.argsMz) {
-            checkVector("ARGS", args, rule);
-        }
-    }
+////        if (rule.headersMz) {
+////            checkVector("HEADERS", headers, rule);
+////        }
+//        if (rule.br.urlMz) {
+//            checkVar("URL", "", r->parsed_uri.path, rule);
+//        }
+//        if (rule.br.argsMz) {
+//            checkVector("ARGS", args, rule);
+//        }
+//    }
 
 //    if ((!strcmp(r->method, "POST") ||
 //            !strcmp(r->method, "PUT")) &&

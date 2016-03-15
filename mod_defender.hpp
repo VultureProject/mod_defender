@@ -34,8 +34,7 @@ typedef struct {
     apr_file_t *errorlog_fd;
     char *nxcorerules_path;
     apr_file_t *nxcorerules_fd;
-    vector<main_rule_t> mainRules;
-    unordered_map<string, check_rule_t> checkRules;
+    NxParser parser;
 } server_config_t;
 >>>>>>> fd0f819... scoring system
 

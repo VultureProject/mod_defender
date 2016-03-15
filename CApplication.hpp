@@ -47,7 +47,6 @@ private:
     vector<pair<const char *, const char *>> headers;
     vector<pair<const char *, const char *>> args;
     vector<pair<const char *, const char *>> body;
-    vector<main_rule_t> mainRules;
     unordered_map<string, check_rule_t> checkRules;
     unordered_map<string, int> matchScores;
 
@@ -61,6 +60,7 @@ public:
     static int storeTable(void*, const char*, const char*);
     void readPost();
     int runHandler();
+<<<<<<< HEAD
 <<<<<<< HEAD
     void checkVar(const char *varName, const char *value, const char *zone);
     void checkVector(const char *zone, vector<pair<const char *, const char *>> &v);
@@ -80,6 +80,12 @@ public:
     void applyCheckRule(const main_rule_t &rule, int matchCount);
     void checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const main_rule_t &rule);
     void checkVar(const char *zone, const char *varName, const char *value, const main_rule_t &rule);
+=======
+    string formatMatch(const http_rule_t &rule, const char *zone, const char *varName);
+    void applyCheckRule(const http_rule_t &rule, int matchCount);
+    void checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule);
+    void checkVar(const char *zone, const char *varName, const char *value, const http_rule_t &rule);
+>>>>>>> 4164dbd... wl hashtables system
     void applyCheckRuleAction(const rule_action_t &action);
 >>>>>>> 71479aa... added url zone checking
 };
