@@ -240,6 +240,7 @@ public:
     unordered_map<string, whitelist_rule_t> wlBodyHash; // hash table of whitelisted BODY rules
     unordered_map<string, whitelist_rule_t> wlHeadersHash; // hash table of whitelisted HEADERS rules
     vector<http_rule_t> disabled_rules; // rules that are globally disabled in one location
+    unordered_map<int, http_rule_t> internalRules;
 
     NxParser(apr_pool_t *p);
     void parseMainRules(apr_array_header_t *rulesArray);

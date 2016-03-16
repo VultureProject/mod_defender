@@ -3,6 +3,17 @@
 
 NxParser::NxParser(apr_pool_t *pool) {
     p = pool;
+
+    /* Internal rules */
+    http_rule_t libsqli;
+    libsqli.id = 17;
+    libsqli.scores.emplace_back("$SQL", 8);
+    internalRules[17] = libsqli;
+
+    http_rule_t libxss;
+    libxss.id = 18;
+    libxss.scores.emplace_back("$XSS", 8);
+    internalRules[18] = libxss;
 }
 
 void NxParser::parseMainRules(apr_array_header_t *rulesArray) {

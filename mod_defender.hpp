@@ -1,11 +1,6 @@
 #ifndef MOD_DEFENDER_HPP
 #define MOD_DEFENDER_HPP
 
-/*
- * To install mod_defender:
- * sudo apxs -n defender -i mod_defender.so
- */
-
 #ifdef __cplusplus
 #define EXTERN_C_BLOCK_BEGIN    extern "C" {
 #define EXTERN_C_BLOCK_END      }
@@ -19,8 +14,6 @@
 #include <httpd.h>
 #include <http_protocol.h>
 #include <http_config.h>
-<<<<<<< HEAD
-=======
 #include <http_connection.h>
 #include <http_core.h>
 #include <http_log.h>
@@ -46,7 +39,6 @@ typedef struct {
     NxParser parser;
     bool confParsed = false;
 } server_config_t;
->>>>>>> fd0f819... scoring system
 
 #endif /* MOD_DEFENDER_HPP */
 

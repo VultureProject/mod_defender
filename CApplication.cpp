@@ -1,48 +1,13 @@
 #include "CApplication.hpp"
-<<<<<<< HEAD
-=======
 #include <apr_strings.h>
 #include <util_script.h>
 #include <iomanip>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
->>>>>>> 5eee329... naxsi core rules parser
-=======
-#include "mod_defender.hpp"
-<<<<<<< HEAD
->>>>>>> fd0f819... scoring system
-=======
-#include "NxParser.h"
->>>>>>> 40a8641... enhanced conf parsing
-
-int CApplication::RunHandler() {
-    int nReturnVal = DECLINED;
-=======
->>>>>>> 71479aa... added url zone checking
-
-<<<<<<< HEAD
-<<<<<<< HEAD
-    if (m_pRequestRec->handler != NULL && strcmp(m_pRequestRec->handler, "defender") == 0) {
-        ap_rputs("Hello World from DEFENDER", m_pRequestRec);
-        nReturnVal = OK;
-    }
-=======
-CApplication::CApplication(request_rec* rec, apr_file_t *errorlog_fd, vector<nxrule_t>& rules) {
-=======
-=======
 #include "NxParser.h"
 #include "mod_defender.hpp"
 
-<<<<<<< HEAD
->>>>>>> 10377d6... negative keyword support in MainRule
-CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
->>>>>>> fd0f819... scoring system
-=======
 CApplication::CApplication(request_rec* rec, server_config_t* scfg) : parser(scfg->parser) {
->>>>>>> 05833d4... whitelist check
     r = rec;
     this->scfg = scfg;
     pool = r->pool;
@@ -56,6 +21,8 @@ CApplication::CApplication(request_rec* rec, server_config_t* scfg) : parser(scf
     apr_table_do(storeTable, &args, GET, NULL);
 
     readPost(); // Store body form data
+
+    uri = string(r->parsed_uri.path);
 }
 
 /*
@@ -77,7 +44,6 @@ void CApplication::readPost() {
         body.emplace_back(formPair->name, buffer);
         i++;
     }
-//    std::reverse(body.begin(), body.end());
 }
 
 /*
@@ -142,7 +108,7 @@ void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
 bool CApplication::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string& varName) {
     bool eligible = false;
     eligible = ((zone == HEADERS && rule.br.headersMz) || (zone == URL && rule.br.specificUrlMz) ||
-            (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz));
+                (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz));
 
     if (!eligible) {
         if (rule.br.customLocation) {
@@ -184,7 +150,9 @@ bool CApplication::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t 
     return eligible;
 }
 
-// Nx mainRules check
+/*
+ * MainRules check
+ */
 void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule) {
 //    cerr << "→ Checking " << varName << "=" << value << " in " << dummy_match_zones[zone] << " with rule #" << rule.id << " ";
 //    if (!rule.br.rxMz)
@@ -193,83 +161,94 @@ void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, c
 //        cerr << "<regex>" << endl;
 
     if (!isRuleEligible(zone, rule, varName)) {
-//        cerr << "Rule not eligible" << endl;
+//        cerr << "Rule #" << rule.id << not eligible" << endl;
         return;
     }
 
-    if (parser.isRuleWhitelisted(r->parsed_uri.path, rule, varName, zone, rule.br.targetName)) {
-        cerr << KGRN "✓ Rule Whitelisted" KNRM << endl;
+    if (parser.isRuleWhitelisted(uri, rule, varName, zone, rule.br.targetName)) {
+        cerr << KGRN "✓ Rule #" << rule.id << " whitelisted" KNRM << endl;
         return;
     }
 
-    string matches;
-    int matchCount = 0;
+    int tmpMatchCount = 0;
     if (rule.br.rxMz) {
-        long rxMatchCount = distance(sregex_iterator(value.begin(), value.end(), rule.br.matchPaternRx), sregex_iterator());
-        if (!rule.br.negative)
-            matchCount += rxMatchCount;
-        if (rule.br.negative && rxMatchCount == 0)
-            matchCount++;
+        tmpMatchCount += distance(sregex_iterator(value.begin(), value.end(), rule.br.matchPaternRx), sregex_iterator());
     }
     else {
-        matchCount += Util::countSubstring(value, rule.br.matchPaternStr);
+        tmpMatchCount += Util::countSubstring(value, rule.br.matchPaternStr);
     }
 
+    /* If rule negative */
+    int matchCount = 0;
+    if (!rule.br.negative)
+        matchCount += tmpMatchCount;
+    if (rule.br.negative && tmpMatchCount == 0)
+        matchCount++;
+
     if (matchCount > 0) {
-        matches += formatMatch(rule, zone, varName);
+        matchVars << formatMatch(rule, zone, varName);
         applyCheckRule(rule, matchCount);
         rulesMatchedCount++;
     }
-
-    matchVars << matches;
-
-//    struct libinjection_sqli_state state;
-//    size_t slen = strlen(value);
-//    libinjection_sqli_init(&state, value, slen, FLAG_NONE);
-//
-//    if (libinjection_is_sqli(&state)) {
-//        http_rule_t rule;
-//        rule.id = 17;
-//        rule.scores.emplace_back(apr_pstrdup(pool, "$SQL"), 8);
-//        formatMatch(rule, zone, varName);
-//    }
-//
-//    if (libinjection_xss(value, slen)) {
-//        http_rule_t rule;
-//        rule.id = 18;
-//        rule.scores.emplace_back(apr_pstrdup(pool, "$XSS"), 8);
-//        formatMatch(rule, zone, varName);
-//    }
 }
 
-void CApplication::checkVector(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v, const http_rule_t &rule) {
-    for (const pair<const string, const string>& pair : v)
+void CApplication::checkRulesOnVars(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v,
+                                    const http_rule_t &rule) {
+    for (const pair<const string, const string>& pair : v) {
         checkVar(zone, pair.first, pair.second, rule);
+    }
+}
+
+void CApplication::checkLibInjectionOnVar(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v) {
+    for (const pair<const string, const string>& pair : v) {
+        checkLibInjection(zone, pair.first, pair.second);
+    }
+}
+
+void CApplication::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value) {
+    struct libinjection_sqli_state state;
+    const char* valueCstr = apr_pstrdup(pool, value.c_str());
+    size_t slen = strlen(value.c_str());
+    libinjection_sqli_init(&state, valueCstr, slen, FLAG_NONE);
+
+    if (libinjection_is_sqli(&state)) {
+        http_rule_t& libsqlirule = parser.internalRules[17];
+        libsqlirule.br.matchPaternStr = state.fingerprint;
+        matchVars << formatMatch(libsqlirule, zone, varName);
+        applyCheckRule(libsqlirule, 1);
+        rulesMatchedCount++;
+    }
+
+    if (libinjection_xss(valueCstr, slen)) {
+        http_rule_t& libxssrule = parser.internalRules[18];
+        matchVars << formatMatch(libxssrule, zone, varName);
+        applyCheckRule(libxssrule, 1);
+        rulesMatchedCount++;
+    }
 }
 
 int CApplication::runHandler() {
     int returnVal = DECLINED;
 
     for (const http_rule_t &rule : parser.getRules) {
-        checkVector(ARGS, args, rule);
+        checkRulesOnVars(ARGS, args, rule);
     }
-    for (const http_rule_t &rule : parser.bodyRules) {
-        checkVector(BODY, body, rule);
+    checkLibInjectionOnVar(ARGS, args);
+    if ((strcmp(r->method, "POST") == 0 || strcmp(r->method, "PUT") == 0)) {
+        for (const http_rule_t &rule : parser.bodyRules) {
+            checkRulesOnVars(BODY, body, rule);
+        }
+        checkLibInjectionOnVar(BODY, body);
     }
     for (const http_rule_t &rule : parser.headerRules) {
-        checkVector(HEADERS, headers, rule);
+        checkRulesOnVars(HEADERS, headers, rule);
     }
+    checkLibInjectionOnVar(HEADERS, headers);
+    string empty = "";
     for (const http_rule_t &rule : parser.genericRules) {
-        string empty = "";
-        string uriPath = string(r->parsed_uri.path);
-        checkVar(URL, empty, uriPath, rule);
+        checkVar(URL, empty, uri, rule);
     }
-
-//    if ((!strcmp(r->method, "POST") ||
-//            !strcmp(r->method, "PUT")) &&
-//            ) {
-//
-//    }
+    checkLibInjection(URL, empty, uri);
 
     if (rulesMatchedCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());
@@ -314,7 +293,6 @@ int CApplication::runHandler() {
 
     cerr << "mod_defender: " << rulesMatchedCount << " match(es)" << endl;
     cerr << flush;
->>>>>>> 5eee329... naxsi core rules parser
 
-    return nReturnVal;
+    return returnVal;
 }
