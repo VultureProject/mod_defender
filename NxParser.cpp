@@ -63,7 +63,7 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
         /* push in custom locations. It's a rule matching a VAR_NAME or an EXACT_URI :
             - GET_VAR, POST_VAR, URI */
         if (rule.br.customLocation) {
-            for (const custom_rule_location_t& loc : rule.br.customLocations) {
+            for (const custom_rule_location_t &loc : rule.br.customLocations) {
                 if (loc.argsVar) {
                     getRules.push_back(rule);
                     DEBUG_CONF_MR("[get] ");
@@ -144,7 +144,6 @@ void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
         rule.type = BASIC_RULE;
         string rawWhitelist = ((const char **) rulesArray->elts)[i] + 3;
 
-        // TODO Check if id negative (Whitelist all user rules (>= 1000), except rule -id
         rule.whitelist = true;
         rule.wlIds = Util::splitToInt(rawWhitelist, ',');
         for (const int &id : rule.wlIds) {
@@ -155,6 +154,7 @@ void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
         if (rawWhitelist.back() == ';') {
             i -= 2;
             whitelistRules.push_back(rule);
+            rule.hasBr = false;
             DEBUG_CONF_BR(endl);
             continue;
         }
@@ -250,11 +250,10 @@ void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
 
             if (!rule.br.rxMz) {
                 customRule.target = apr_pstrdup(p, cmz.second.c_str());
-                rule.br.matchPaternStr = apr_pstrdup(p, cmz.second.c_str());
                 DEBUG_CONF_MZ("(rx)" << cmz.second << " ");
             }
             else {
-                rule.br.matchPaternRx = regex(cmz.second);
+                customRule.targetRx = regex(cmz.second);
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
             }
             rule.br.customLocations.push_back(customRule);
@@ -405,4 +404,297 @@ void NxParser::createHashTables() {
         }
         DEBUG_CONF_HT(endl);
     }
+}
+
+bool NxParser::checkIds(int matchId, const vector<int> &wlIds) {
+    bool negative = false;
+
+    for (const int &wlId : wlIds) {
+        if (wlId == matchId)
+            return true;
+        if (wlId == 0) // WHY ??
+            return true;
+        if (wlId < 0 && matchId >= 1000) { // manage negative whitelists, except for internal rules
+            negative = true;
+            if (matchId == -wlId) // negative wl excludes this one
+                return false;
+        }
+    }
+    return negative;
+}
+
+bool NxParser::isWhitelistAdapted(whitelist_rule_t &wlrule, string &name, enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
+                                  enum MATCH_TYPE type, bool targetName) {
+    if (zone == FILE_EXT)
+        zone = BODY; // FILE_EXT zone is just a hack, as it indeed targets BODY
+
+    if (wlrule.targetName && !targetName) { // if whitelist targets arg name, but the rules hit content
+        DEBUG_CONF_WL("whitelist targets name, but rule matched content.");
+        return false;
+    }
+    if (!wlrule.targetName && targetName) { // if if the whitelist target contents, but the rule hit arg name
+        DEBUG_CONF_WL("whitelist targets content, but rule matched name.");
+        return false;
+    }
+
+
+    if (type == NAME_ONLY) {
+        DEBUG_CONF_WL("Name match in zone " <<
+                      (zone == ARGS ? "ARGS" : zone == BODY ? "BODY" : zone == HEADERS ? "HEADERS"
+                                                                                              : "UNKNOWN!!!!!"));
+        //False Positive, there was a whitelist that matches the argument name,
+        // But is was actually matching an existing URI name.
+        if (zone != wlrule.zone || wlrule.uriOnly) {
+            DEBUG_CONF_WL("bad whitelist, name match, but WL was only on URL.");
+            return false;
+        }
+        return (checkIds(rule.id, wlrule.ids));
+    }
+    if (type == URI_ONLY ||
+        type == MIXED) {
+        /* zone must match */
+        if (wlrule.uriOnly && type != URI_ONLY) {
+            DEBUG_CONF_WL("bad whitelist, type is URI_ONLY, but not whitelist");
+            return false;
+        }
+
+        if (zone != wlrule.zone) {
+            DEBUG_CONF_WL("bad whitelist, URL match, but not zone");
+            return false;
+        }
+
+        return (checkIds(rule.id, wlrule.ids));
+    }
+    DEBUG_CONF_WL("finished wl check, failed.");
+}
+
+// name is hashkey
+bool NxParser::isRuleWhitelisted(const char* uri, const http_rule_t &rule, string &name, enum DUMMY_MATCH_ZONE zone,
+                                    bool targetName) {
+    /* Check if the rule is part of disabled rules for this location */
+    for (const http_rule_t &disabledRule : disabled_rules) {
+        if (checkIds(rule.id, disabledRule.wlIds)) { // Is rule disabled ?
+            if (!disabledRule.hasBr) { // if it doesn't specify zone, skip zone-check
+                continue;
+            }
+
+            /* If rule target nothing, it's whitelisted everywhere */
+            if (!(disabledRule.br.argsMz || disabledRule.br.headersMz ||
+                  disabledRule.br.bodyMz || disabledRule.br.urlMz)) {
+                return true;
+            }
+
+            /* if exc is in name, but rule is not specificaly disabled for name (and targets a zone)  */
+            if (targetName != disabledRule.br.targetName)
+                continue;
+
+            switch (zone) {
+                case ARGS:
+                    if (disabledRule.br.argsMz) {
+                        DEBUG_CONF_WL("rule " << rule.id << " is disabled in ARGS");
+                        return true;
+                    }
+                    break;
+                case HEADERS:
+                    if (disabledRule.br.headersMz) {
+                        DEBUG_CONF_WL("rule " << rule.id << " is disabled in HEADERS");
+                        return true;
+                    }
+                    break;
+                case BODY:
+                    if (disabledRule.br.bodyMz) {
+                        DEBUG_CONF_WL("rule " << rule.id << " is disabled in BODY");
+                        return true;
+                    }
+                    break;
+                case FILE_EXT:
+                    if (disabledRule.br.fileExtMz) {
+                        DEBUG_CONF_WL("rule " << rule.id << " is disabled in FILE_EXT");
+                        return true;
+                    }
+                    break;
+                case URL:
+                    if (disabledRule.br.urlMz) {
+                        DEBUG_CONF_WL("rule " << rule.id << " is disabled in URL zone:" << zone);
+                        return true;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    whitelist_rule_t wlRule;
+
+    /* check for ARGS_VAR:x(|NAME) whitelists. */
+    /* (name) or (#name) */
+    if (name.length() > 0) {
+        /* try to find in hashtables */
+        bool found = findWlInHash(wlRule, name, zone);
+        if (found && isWhitelistAdapted(wlRule, name, zone, rule, NAME_ONLY, targetName))
+            return true;
+
+        string hashname = "#";
+        hashname += name;
+        DEBUG_CONF_WL("hashing varname [" << name << "] (rule:" << rule.id << ") - 'wl:X_VAR:" << name << "%V|NAME'");
+        found = findWlInHash(wlRule, hashname, zone);
+        if (found && isWhitelistAdapted(wlRule, name, zone, rule, NAME_ONLY, targetName))
+            return true;
+    }
+
+    /* Plain URI whitelists */
+    /* check the URL no matter what zone we're in */
+    if (wlUrlHash.size() > 0) {
+        /* mimic find_wl_in_hash, we are looking in a different hashtable */
+        string hashname = string(uri);
+        std::transform(hashname.begin(), hashname.end(), hashname.begin(), ::tolower);
+        DEBUG_CONF_WL("hashing uri [" << hashname << "] (rule:" << rule.id << ") 'wl:$URI:" << hashname << "|*'");
+
+        unordered_map<string, whitelist_rule_t>::const_iterator it = wlUrlHash.find(hashname);
+        bool found = false;
+        if (it != wlUrlHash.end()) {
+            wlRule = it->second;
+            found = true;
+        }
+
+        if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
+            return true;
+    }
+
+    /* Lookup for $URL|URL (uri)*/
+    string hashname = string(uri);
+    DEBUG_CONF_WL("hashing uri#1 [" << hashname << "] (rule:" << rule.id << ") ($URL:X|URI)");
+    bool found = findWlInHash(wlRule, hashname, zone);
+    if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
+        return true;
+
+    /* Looking $URL:x|ZONE|NAME */
+    hashname = "#";
+    /* should make it sound crit isn't it ?*/
+    hashname += uri;
+    DEBUG_CONF_WL("hashing uri#3 [" << hashname << "] (rule:" << rule.id << ") ($URL:X|ZONE|NAME)");
+    found = findWlInHash(wlRule, hashname, zone);
+    if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
+        return true;
+
+    /* Maybe it was $URL+$VAR (uri#name) or (#uri#name) */
+    hashname.clear();
+    if (targetName) {
+        hashname += "#";
+    }
+    hashname += uri;
+    hashname += "#";
+    hashname += name;
+    DEBUG_CONF_WL("hashing MIX [" << hashname << "] ($URL:x|$X_VAR:y) or ($URL:x|$X_VAR:y|NAME)");
+    found = findWlInHash(wlRule, hashname, zone);
+    if (found && isWhitelistAdapted(wlRule, name, zone, rule, MIXED, targetName))
+        return true;
+
+    if (isRuleWhitelistedRx(rule, name, zone, targetName)) {
+        DEBUG_CONF_WL("Whitelisted by RX !");
+        return true;
+    }
+
+    return false;
+}
+
+bool NxParser::isRuleWhitelistedRx(const http_rule_t &rule, string &name, enum DUMMY_MATCH_ZONE zone, bool targetName) {
+    /* Look it up in regexed whitelists for matchzones */
+    if (rxmz_wlr.size() > 0)
+        return false;
+
+    for (const http_rule_t &rxMwRule : rxmz_wlr) {
+        if (!rxMwRule.hasBr || rxMwRule.br.customLocations.size() == 0) {
+            DEBUG_CONF_WL("Rule pushed to RXMZ, but has no custom_location.");
+            continue;
+        }
+
+        /*
+        ** once we have pointer to the rxMwRule :
+        ** - go through each custom location (ie. ARGS_VAR_X:foobar*)
+        ** - verify that regular expressions match. If not, it means whitelist does not apply.
+        */
+        if (rxMwRule.br.zone != zone) {
+            DEBUG_CONF_WL("Not targeting same zone.");
+            continue;
+        }
+
+        if (targetName != rxMwRule.br.targetName) {
+            DEBUG_CONF_WL("only one target_name");
+            continue;
+        }
+
+        bool violation = false;
+        for (const custom_rule_location_t& custloc : rxMwRule.br.customLocations) {
+            if (custloc.bodyVar) {
+//                long match = distance(sregex_iterator(name.begin(), name.end(), custloc.targetRx), sregex_iterator());
+                bool match = regex_match(name, custloc.targetRx);
+                if (!match) {
+                    violation = true;
+                    DEBUG_CONF_WL("[BODY] FAIL (str:" << name << ")");
+                    break;
+                }
+                DEBUG_CONF_WL("[BODY] Match (str:" << name << ")");
+            }
+            if (custloc.argsVar) {
+                bool match = regex_match(name, custloc.targetRx);
+                if (!match) {
+                    violation = true;
+                    DEBUG_CONF_WL("[ARGS] FAIL (str:" << name << ")");
+                    break;
+                }
+                DEBUG_CONF_WL("[ARGS] Match (str:" << name << ")");
+            }
+            if (custloc.specificUrl) {
+                bool match = regex_match(name, custloc.targetRx);
+                if (!match) {
+                    violation = true;
+                    DEBUG_CONF_WL("[URI] FAIL (str:" << name << ")");
+                    break;
+                }
+                DEBUG_CONF_WL("[URI] Match (str:" << name << ")");
+            }
+        }
+
+        if (!violation) {
+            DEBUG_CONF_WL("rxMwRule whitelisted by rx");
+            if (checkIds(rule.id, rxMwRule.wlIds))
+                return true;
+        }
+    }
+}
+
+bool NxParser::findWlInHash(whitelist_rule_t &wlRule, string &key, enum DUMMY_MATCH_ZONE zone) {
+    std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+
+    if (zone == BODY || zone == FILE_EXT) {
+        unordered_map<string, whitelist_rule_t>::const_iterator it = wlBodyHash.find(key);
+        if (it != wlBodyHash.end()) {
+            wlRule = it->second;
+            return true;
+        }
+    }
+    else if (zone == HEADERS) {
+        unordered_map<string, whitelist_rule_t>::const_iterator it = wlHeadersHash.find(key);
+        if (it != wlHeadersHash.end()) {
+            wlRule = it->second;
+            return true;
+        }
+    }
+    else if (zone == URL) {
+        unordered_map<string, whitelist_rule_t>::const_iterator it = wlUrlHash.find(key);
+        if (it != wlUrlHash.end()) {
+            wlRule = it->second;
+            return true;
+        }
+    }
+    else if (zone == ARGS) {
+        unordered_map<string, whitelist_rule_t>::const_iterator it = wlArgsHash.find(key);
+        if (it != wlArgsHash.end()) {
+            wlRule = it->second;
+            return true;
+        }
+    }
+    return false;
 }

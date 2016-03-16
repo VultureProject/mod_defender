@@ -34,13 +34,17 @@ using std::cerr;
 using std::stringstream;
 using std::endl;
 using std::flush;
+using std::regex;
+using std::sregex_iterator;
 using std::regex_match;
+using std::distance;
 using std::unordered_map;
 
 class CApplication {
 private:
     request_rec* r;
     server_config_t* scfg;
+    NxParser& parser;
     apr_pool_t* pool;
     stringstream matchVars;
     unsigned int rulesMatchedCount = 0;
@@ -60,6 +64,7 @@ public:
     static int storeTable(void*, const char*, const char*);
     void readPost();
     int runHandler();
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
     void checkVar(const char *varName, const char *value, const char *zone);
@@ -86,6 +91,12 @@ public:
     void checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule);
     void checkVar(const char *zone, const char *varName, const char *value, const http_rule_t &rule);
 >>>>>>> 4164dbd... wl hashtables system
+=======
+    string formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const char *varName);
+    void applyCheckRule(const http_rule_t &rule, int matchCount);
+    void checkVector(enum DUMMY_MATCH_ZONE zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule);
+    void checkVar(enum DUMMY_MATCH_ZONE zone, const char *varName, const char *value, const http_rule_t &rule);
+>>>>>>> 05833d4... whitelist check
     void applyCheckRuleAction(const rule_action_t &action);
 >>>>>>> 71479aa... added url zone checking
 };

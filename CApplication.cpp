@@ -36,9 +36,13 @@ CApplication::CApplication(request_rec* rec, apr_file_t *errorlog_fd, vector<nxr
 #include "NxParser.h"
 #include "mod_defender.hpp"
 
+<<<<<<< HEAD
 >>>>>>> 10377d6... negative keyword support in MainRule
 CApplication::CApplication(request_rec* rec, server_config_t* scfg) {
 >>>>>>> fd0f819... scoring system
+=======
+CApplication::CApplication(request_rec* rec, server_config_t* scfg) : parser(scfg->parser) {
+>>>>>>> 05833d4... whitelist check
     r = rec;
     this->scfg = scfg;
     pool = r->pool;
@@ -86,12 +90,12 @@ int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-string CApplication::formatMatch(const http_rule_t &rule, const char* zone, const char* varName) {
+string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const char* varName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
 
-    ss << "zone" << rulesMatchedCount << "=" << zone << "&";
+    ss << "zone" << rulesMatchedCount << "=" << dummy_match_zones[zone] << "&";
     ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
     ss << "var_name" << rulesMatchedCount << "=" << varName;
 
@@ -128,15 +132,25 @@ void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
     }
 }
 
-void CApplication::checkVar(const char *zone, const char *varName, const char *value, const http_rule_t &rule) {
-    // Nx mainRules check
+// Nx mainRules check
+void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const char *varName, const char *value, const http_rule_t &rule) {
+    cerr << "→ Checking " << varName << "=" << value << " in " << dummy_match_zones[zone] << " with rule #" << rule.id << " ";
+    if (!rule.br.rxMz)
+        cerr << "pattern: " << rule.br.matchPaternStr << endl;
+    else
+        cerr << "<regex>" << endl;
+
+    string name = string(varName);
+    if (parser.isRuleWhitelisted(r->parsed_uri.path, rule, name, zone, rule.br.targetName)) {
+        cerr << "✓ Rule Whitelisted" << endl;
+        return;
+    }
+
     string matches;
     int matchCount = 0;
     if (rule.br.rxMz) {
         string valueStr = string(value);
-        std::ptrdiff_t const rxMatchCount(std::distance(
-                std::sregex_iterator(valueStr.begin(), valueStr.end(), rule.br.matchPaternRx),
-                std::sregex_iterator()));
+        long rxMatchCount = distance(sregex_iterator(valueStr.begin(), valueStr.end(), rule.br.matchPaternRx), sregex_iterator());
         if (!rule.br.negative)
             matchCount += rxMatchCount;
         if (rule.br.negative && rxMatchCount == 0)
@@ -178,10 +192,9 @@ void CApplication::checkVar(const char *zone, const char *varName, const char *v
 //    }
 }
 
-void CApplication::checkVector(const char *zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule) {
-    for (int i = 0; i < v.size(); i++) {
-        checkVar(zone, v[i].first, v[i].second, rule);
-    }
+void CApplication::checkVector(enum DUMMY_MATCH_ZONE zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule) {
+    for (const pair<const char *, const char *>& pair : v)
+        checkVar(zone, pair.first, pair.second, rule);
 }
 
 int CApplication::runHandler() {
@@ -201,6 +214,12 @@ int CApplication::runHandler() {
 //            checkVector("ARGS", args, rule);
 //        }
 //    }
+    for (const http_rule_t &rule : parser.getRules) {
+        checkVector(ARGS, args, rule);
+    }
+    for (const http_rule_t &rule : parser.bodyRules) {
+        checkVector(BODY, body, rule);
+    }
 
 //    if ((!strcmp(r->method, "POST") ||
 //            !strcmp(r->method, "PUT")) &&

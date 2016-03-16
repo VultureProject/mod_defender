@@ -35,6 +35,7 @@ typedef struct {
     char *nxcorerules_path;
     apr_file_t *nxcorerules_fd;
     NxParser parser;
+    bool confParsed = false;
 } server_config_t;
 >>>>>>> fd0f819... scoring system
 

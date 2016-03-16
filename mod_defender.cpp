@@ -52,8 +52,12 @@ typedef struct {
 apr_status_t defender_delete_capplication_object(void *inPtr) {
 >>>>>>> 5eee329... naxsi core rules parser
     if (inPtr)
+<<<<<<< HEAD
         delete ( CApplication*) inPtr;
 
+=======
+        delete (CApplication *) inPtr;
+>>>>>>> 05833d4... whitelist check
     return OK;
 }
 
@@ -69,11 +73,8 @@ int defender_handler(request_rec* inpRequest) {
    registered with Apache on this request cycle. */
 defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
     defender_config_t *pReturnValue = NULL;
-
-    if (inpRequest != NULL) {
+    if (inpRequest != NULL)
         pReturnValue = (defender_config_t *) ap_get_module_config(inpRequest->request_config, &defender_module);
-    }
-
     return pReturnValue;
 }
 
@@ -91,13 +92,14 @@ int defender_handler(request_rec *r) {
 
     scfg->parser = NxParser(r->server->process->pool);
 
-//    if (scfg->mainRules.size() == 0)
+    if (!scfg->confParsed) {
         scfg->parser.parseMainRules(dcfg->mainRulesArray);
-//    if (scfg->checkRules.size() == 0)
         scfg->parser.parseCheckRules(dcfg->checkRulesArray);
-//
-    scfg->parser.parseBasicRules(dcfg->basicRulesArray);
-    scfg->parser.createHashTables();
+        scfg->parser.parseBasicRules(dcfg->basicRulesArray);
+        scfg->parser.createHashTables();
+        scfg->confParsed = true;
+    }
+
 
 //    for (const main_rule_t &rule : dcfg->mainRules) {
 //        fprintf(stderr, "%d ", rule.rxMz);
@@ -122,7 +124,7 @@ int defender_handler(request_rec *r) {
 //        cerr << endl;
 //    }
 
-    return DECLINED;
+//    return DECLINED; // STOP THE HANDLE
 
     /* Create an instance of our application. */
 <<<<<<< HEAD
