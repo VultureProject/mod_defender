@@ -48,9 +48,9 @@ private:
     apr_pool_t* pool;
     stringstream matchVars;
     unsigned int rulesMatchedCount = 0;
-    vector<pair<const char *, const char *>> headers;
-    vector<pair<const char *, const char *>> args;
-    vector<pair<const char *, const char *>> body;
+    vector<pair<const string, const string>> headers;
+    vector<pair<const string, const string>> args;
+    vector<pair<const string, const string>> body;
     unordered_map<string, check_rule_t> checkRules;
     unordered_map<string, int> matchScores;
 
@@ -64,6 +64,7 @@ public:
     static int storeTable(void*, const char*, const char*);
     void readPost();
     int runHandler();
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -99,6 +100,14 @@ public:
 >>>>>>> 05833d4... whitelist check
     void applyCheckRuleAction(const rule_action_t &action);
 >>>>>>> 71479aa... added url zone checking
+=======
+    string formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const string& varName);
+    void applyCheckRule(const http_rule_t &rule, int matchCount);
+    void checkVector(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v, const http_rule_t &rule);
+    void checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule);
+    void applyCheckRuleAction(const rule_action_t &action);
+    bool isRuleEligible(DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string &varName);
+>>>>>>> b51ae97... core rule eligibility check
 };
 
 #endif /* CAPPLICATION_HPP */

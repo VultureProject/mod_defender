@@ -214,7 +214,7 @@ void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             }
             else if (cmz.first == "$URL") {
                 customRule.specificUrl = true;
-                rule.br.urlSpecifiedMz = true;
+                rule.br.specificUrlMz = true;
                 DEBUG_CONF_MZ("$URL ");
             }
             else if (cmz.first == "$BODY_VAR") {
@@ -237,7 +237,7 @@ void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             }
             else if (cmz.first == "$URL_X") {
                 customRule.specificUrl = true;
-                rule.br.urlSpecifiedMz = true;
+                rule.br.specificUrlMz = true;
                 rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$URL_X ");
             }
@@ -423,7 +423,7 @@ bool NxParser::checkIds(int matchId, const vector<int> &wlIds) {
     return negative;
 }
 
-bool NxParser::isWhitelistAdapted(whitelist_rule_t &wlrule, string &name, enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
+bool NxParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
                                   enum MATCH_TYPE type, bool targetName) {
     if (zone == FILE_EXT)
         zone = BODY; // FILE_EXT zone is just a hack, as it indeed targets BODY
@@ -469,7 +469,7 @@ bool NxParser::isWhitelistAdapted(whitelist_rule_t &wlrule, string &name, enum D
 }
 
 // name is hashkey
-bool NxParser::isRuleWhitelisted(const char* uri, const http_rule_t &rule, string &name, enum DUMMY_MATCH_ZONE zone,
+bool NxParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone,
                                     bool targetName) {
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
@@ -563,14 +563,13 @@ bool NxParser::isRuleWhitelisted(const char* uri, const http_rule_t &rule, strin
     }
 
     /* Lookup for $URL|URL (uri)*/
-    string hashname = string(uri);
-    DEBUG_CONF_WL("hashing uri#1 [" << hashname << "] (rule:" << rule.id << ") ($URL:X|URI)");
-    bool found = findWlInHash(wlRule, hashname, zone);
+    DEBUG_CONF_WL("hashing uri#1 [" << uri << "] (rule:" << rule.id << ") ($URL:X|URI)");
+    bool found = findWlInHash(wlRule, uri, zone);
     if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
         return true;
 
     /* Looking $URL:x|ZONE|NAME */
-    hashname = "#";
+    string hashname = "#";
     /* should make it sound crit isn't it ?*/
     hashname += uri;
     DEBUG_CONF_WL("hashing uri#3 [" << hashname << "] (rule:" << rule.id << ") ($URL:X|ZONE|NAME)");
@@ -599,7 +598,7 @@ bool NxParser::isRuleWhitelisted(const char* uri, const http_rule_t &rule, strin
     return false;
 }
 
-bool NxParser::isRuleWhitelistedRx(const http_rule_t &rule, string &name, enum DUMMY_MATCH_ZONE zone, bool targetName) {
+bool NxParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone, bool targetName) {
     /* Look it up in regexed whitelists for matchzones */
     if (rxmz_wlr.size() > 0)
         return false;
@@ -665,8 +664,9 @@ bool NxParser::isRuleWhitelistedRx(const http_rule_t &rule, string &name, enum D
     }
 }
 
-bool NxParser::findWlInHash(whitelist_rule_t &wlRule, string &key, enum DUMMY_MATCH_ZONE zone) {
-    std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+bool NxParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum DUMMY_MATCH_ZONE zone) {
+    string keyLowered = string(key);
+    std::transform(keyLowered.begin(), keyLowered.end(), keyLowered.begin(), ::tolower);
 
     if (zone == BODY || zone == FILE_EXT) {
         unordered_map<string, whitelist_rule_t>::const_iterator it = wlBodyHash.find(key);

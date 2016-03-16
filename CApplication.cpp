@@ -74,7 +74,7 @@ void CApplication::readPost() {
         char *buffer = (char *) apr_palloc(pool, size + 1);
         apr_brigade_flatten(formPair->value, buffer, &size);
         buffer[len] = 0;
-        body.emplace_back(apr_pstrdup(pool, formPair->name), buffer);
+        body.emplace_back(formPair->name, buffer);
         i++;
     }
 //    std::reverse(body.begin(), body.end());
@@ -85,12 +85,12 @@ void CApplication::readPost() {
  * an apr_table_t into a vector
  */
 int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
-    vector<pair<const char *, const char *>>* kvVector = static_cast<vector<pair<const char *, const char *>>*>(pVoid);
-    kvVector->push_back(pair<const char *, const char *>(key, value));
+    vector<pair<const string, const string>>* kvVector = static_cast<vector<pair<const string, const string>>*>(pVoid);
+    kvVector->emplace_back(key, value);
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const char* varName) {
+string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const string& varName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
@@ -98,6 +98,13 @@ string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE 
     ss << "zone" << rulesMatchedCount << "=" << dummy_match_zones[zone] << "&";
     ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
     ss << "var_name" << rulesMatchedCount << "=" << varName;
+
+    cerr << KRED "⚠ rule #" << rule.id << " ";
+    if (!rule.br.rxMz)
+        cerr << "(pattern: " << rule.br.matchPaternStr << ") matched";
+    else
+        cerr << "(<regex>) matched";
+    cerr << " with var " << varName << " in " << dummy_match_zones[zone] << KNRM << endl;
 
     return ss.str();
 }
@@ -132,37 +139,80 @@ void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
     }
 }
 
-// Nx mainRules check
-void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const char *varName, const char *value, const http_rule_t &rule) {
-    cerr << "→ Checking " << varName << "=" << value << " in " << dummy_match_zones[zone] << " with rule #" << rule.id << " ";
-    if (!rule.br.rxMz)
-        cerr << "pattern: " << rule.br.matchPaternStr << endl;
-    else
-        cerr << "<regex>" << endl;
+bool CApplication::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string& varName) {
+    bool eligible = false;
+    eligible = ((zone == HEADERS && rule.br.headersMz) || (zone == URL && rule.br.specificUrlMz) ||
+            (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz));
 
-    string name = string(varName);
-    if (parser.isRuleWhitelisted(r->parsed_uri.path, rule, name, zone, rule.br.targetName)) {
-        cerr << "✓ Rule Whitelisted" << endl;
+    if (!eligible) {
+        if (rule.br.customLocation) {
+            if (zone == HEADERS && rule.br.headersVarMz) {
+                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
+                    if (rule.br.rxMz)
+                        eligible = regex_match(varName, custloc.targetRx);
+                    else
+                        eligible = (varName == custloc.target);
+                }
+            }
+            else if (zone == URL && rule.br.specificUrlMz) {
+                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
+                    if (rule.br.rxMz)
+                        eligible = regex_match(varName, custloc.targetRx);
+                    else
+                        eligible = (varName == custloc.target);
+                }
+            }
+            else if (zone == ARGS && rule.br.argsVarMz) {
+                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
+                    if (rule.br.rxMz)
+                        eligible = regex_match(varName, custloc.targetRx);
+                    else
+                        eligible = (varName == custloc.target);
+                }
+            }
+            else if (zone == BODY && rule.br.bodyVarMz) {
+                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
+                    if (rule.br.rxMz)
+                        eligible = regex_match(varName, custloc.targetRx);
+                    else
+                        eligible = (varName == custloc.target);
+                }
+            }
+        }
+    }
+
+    return eligible;
+}
+
+// Nx mainRules check
+void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule) {
+//    cerr << "→ Checking " << varName << "=" << value << " in " << dummy_match_zones[zone] << " with rule #" << rule.id << " ";
+//    if (!rule.br.rxMz)
+//        cerr << "pattern: " << rule.br.matchPaternStr << endl;
+//    else
+//        cerr << "<regex>" << endl;
+
+    if (!isRuleEligible(zone, rule, varName)) {
+//        cerr << "Rule not eligible" << endl;
+        return;
+    }
+
+    if (parser.isRuleWhitelisted(r->parsed_uri.path, rule, varName, zone, rule.br.targetName)) {
+        cerr << KGRN "✓ Rule Whitelisted" KNRM << endl;
         return;
     }
 
     string matches;
     int matchCount = 0;
     if (rule.br.rxMz) {
-        string valueStr = string(value);
-        long rxMatchCount = distance(sregex_iterator(valueStr.begin(), valueStr.end(), rule.br.matchPaternRx), sregex_iterator());
+        long rxMatchCount = distance(sregex_iterator(value.begin(), value.end(), rule.br.matchPaternRx), sregex_iterator());
         if (!rule.br.negative)
             matchCount += rxMatchCount;
         if (rule.br.negative && rxMatchCount == 0)
             matchCount++;
     }
     else {
-        char* p = apr_pstrdup(pool, value);
-        size_t len = strlen(rule.br.matchPaternStr);
-        while ((p = strstr(p, rule.br.matchPaternStr)) != NULL && value != p) {
-            matchCount++;
-            p += len;
-        }
+        matchCount += Util::countSubstring(value, rule.br.matchPaternStr);
     }
 
     if (matchCount > 0) {
@@ -192,33 +242,27 @@ void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const char *varName, con
 //    }
 }
 
-void CApplication::checkVector(enum DUMMY_MATCH_ZONE zone, vector<pair<const char *, const char *>> &v, const http_rule_t &rule) {
-    for (const pair<const char *, const char *>& pair : v)
+void CApplication::checkVector(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v, const http_rule_t &rule) {
+    for (const pair<const string, const string>& pair : v)
         checkVar(zone, pair.first, pair.second, rule);
 }
 
 int CApplication::runHandler() {
     int returnVal = DECLINED;
 
-//    for (const http_rule_t &rule : mainRules) {
-//        if (rule.br.bodyMz) {
-//            checkVector("BODY", body, rule);
-//        }
-////        if (rule.headersMz) {
-////            checkVector("HEADERS", headers, rule);
-////        }
-//        if (rule.br.urlMz) {
-//            checkVar("URL", "", r->parsed_uri.path, rule);
-//        }
-//        if (rule.br.argsMz) {
-//            checkVector("ARGS", args, rule);
-//        }
-//    }
     for (const http_rule_t &rule : parser.getRules) {
         checkVector(ARGS, args, rule);
     }
     for (const http_rule_t &rule : parser.bodyRules) {
         checkVector(BODY, body, rule);
+    }
+    for (const http_rule_t &rule : parser.headerRules) {
+        checkVector(HEADERS, headers, rule);
+    }
+    for (const http_rule_t &rule : parser.genericRules) {
+        string empty = "";
+        string uriPath = string(r->parsed_uri.path);
+        checkVar(URL, empty, uriPath, rule);
     }
 
 //    if ((!strcmp(r->method, "POST") ||

@@ -12,7 +12,7 @@
 #include <regex>
 #include <unordered_map>
 
-#define DEBUG_CONFIG_MAINRULE
+//#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
 #define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
@@ -40,14 +40,14 @@
 #define DEBUG_CONF_MZ(x)
 #endif
 
-#define DEBUG_CONFIG_HASHTABLES
+//#define DEBUG_CONFIG_HASHTABLES
 #ifdef DEBUG_CONFIG_HASHTABLES
 #define DEBUG_CONF_HT(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_HT(x)
 #endif
 
-#define DEBUG_CONFIG_WL
+//#define DEBUG_CONFIG_WL
 #ifdef DEBUG_CONFIG_WL
 #define DEBUG_CONF_WL(x) do { std::cerr << x << endl; } while (0)
 #else
@@ -162,7 +162,6 @@ typedef struct {
     bool uriOnly = false; // if the "name" is only an url, specify it
     bool targetName = false; // does the rule targets the name instead of the content
     string name; // hash key [#]URI#VARNAME
-//    ngx_int_t hash;
     vector<int> ids;
 } whitelist_rule_t;
 
@@ -177,7 +176,7 @@ typedef struct {
     bool headersMz = false;
     bool headersVarMz = false;
     bool urlMz = false;
-    bool urlSpecifiedMz = false;
+    bool specificUrlMz = false;
     bool argsMz = false;
     bool argsVarMz = false;
     bool fileExtMz = false;
@@ -203,7 +202,6 @@ typedef struct {
 //    int score; //also handles DENY and ALLOW
 
     /* List of scores increased on rule match. */
-//    ngx_array_t *sscores;
     vector<pair<const char *, int>> scores;
 //    bool sc_block = false; //
 //    bool sc_allow = false; //
@@ -223,8 +221,8 @@ class NxParser {
 private:
     apr_pool_t *p;
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
-    bool isRuleWhitelistedRx(const http_rule_t &rule, string &name, DUMMY_MATCH_ZONE zone, bool targetName);
-    bool isWhitelistAdapted(whitelist_rule_t &wlrule, string &name, DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
+    bool isRuleWhitelistedRx(const http_rule_t &rule, const string &name, DUMMY_MATCH_ZONE zone, bool targetName);
+    bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
 
 public:
@@ -252,8 +250,8 @@ public:
     void wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     bool checkIds(int matchId, const vector<int> &wlIds);
-    bool findWlInHash(whitelist_rule_t &wlRule, string &key, DUMMY_MATCH_ZONE zone);
-    bool isRuleWhitelisted(const char *uri, const http_rule_t &rule, string &name, DUMMY_MATCH_ZONE zone, bool targetName);
+    bool findWlInHash(whitelist_rule_t &wlRule, const string &key, DUMMY_MATCH_ZONE zone);
+    bool isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, DUMMY_MATCH_ZONE zone, bool targetName);
 };
 
 
