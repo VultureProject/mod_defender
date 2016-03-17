@@ -45,11 +45,11 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 
 1. Populate it with conf
 	```sh
-	$ sudo wget -O /etc/moddefender/naxsi_core_rules.conf \
+	$ sudo wget -O /etc/moddefender/core_mainrules.conf \
 	https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
 	```
     ```sh
-	$ cat <<EOT | sudo tee /etc/moddefender/naxsi_rules.conf > /dev/null
+	$ cat <<EOT | sudo tee /etc/moddefender/checkrules.conf > /dev/null
     ## check rules
     CheckRule "\$SQL >= 8" BLOCK;
     CheckRule "\$RFI >= 8" BLOCK;
@@ -60,8 +60,8 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     ```
     ```sh
     $ cat <<EOT | sudo tee /etc/moddefender/moddefender.conf > /dev/null
-    # Naxsi match log path
-    NxErrorLog \${APACHE_LOG_DIR}/nxerror.log
+    # Match log path
+    MatchLog \${APACHE_LOG_DIR}/moddef_match.log
     #Learning mode toggle
     LearningMode 1
     #SecRules mode toggle

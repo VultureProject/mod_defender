@@ -1,5 +1,5 @@
-#ifndef CAPPLICATION_HPP
-#define CAPPLICATION_HPP
+#ifndef RUNTIMESCANNER_HPP
+#define RUNTIMESCANNER_HPP
 
 #include <map>
 #include <vector>
@@ -9,7 +9,7 @@
 #include <chrono>
 #include <httpd.h>
 #include <unordered_map>
-#include "NxParser.h"
+#include "RuleParser.h"
 #include "mod_defender.hpp"
 
 using std::chrono::system_clock;
@@ -26,11 +26,11 @@ using std::regex_match;
 using std::distance;
 using std::unordered_map;
 
-class CApplication {
+class RuntimeScanner {
 private:
     request_rec* r;
     server_config_t* scfg;
-    NxParser& parser;
+    RuleParser& parser;
     apr_pool_t* pool;
     stringstream matchVars;
     unsigned int rulesMatchedCount = 0;
@@ -46,7 +46,7 @@ private:
     bool log = false;
 
 public:
-    CApplication(request_rec* rec, server_config_t* scfg, NxParser& parser);
+    RuntimeScanner(request_rec* rec, server_config_t* scfg, RuleParser& parser);
     static int storeTable(void*, const char*, const char*);
     void readPost();
     int runHandler();
@@ -61,5 +61,5 @@ public:
     void checkLibInjectionOnVar(DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v);
 };
 
-#endif /* CAPPLICATION_HPP */
+#endif /* RUNTIMESCANNER_HPP */
 

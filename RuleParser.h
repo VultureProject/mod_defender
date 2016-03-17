@@ -1,5 +1,5 @@
-#ifndef MOD_DEFENDER_NXPARSER_H
-#define MOD_DEFENDER_NXPARSER_H
+#ifndef MOD_DEFENDER_RULEPARSER_H
+#define MOD_DEFENDER_RULEPARSER_H
 
 #include <iostream>
 #include <sstream>
@@ -217,7 +217,7 @@ typedef struct {
     basic_rule_t br; // specific rule stuff
 } http_rule_t;
 
-class NxParser {
+class RuleParser {
 private:
     apr_pool_t *p;
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
@@ -243,12 +243,12 @@ public:
     vector<http_rule_t> disabled_rules; // rules that are globally disabled in one location
     unordered_map<int, http_rule_t> internalRules;
 
-    NxParser(apr_pool_t *p);
+    RuleParser(apr_pool_t *p);
     void parseMainRules(apr_array_header_t *rulesArray);
     void parseCheckRules(apr_array_header_t *rulesArray);
     void parseBasicRules(apr_array_header_t *rulesArray);
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
-    void createHashTables();
+    void generateHashTables();
     void wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     bool checkIds(int matchId, const vector<int> &wlIds);
@@ -257,4 +257,4 @@ public:
 };
 
 
-#endif //MOD_DEFENDER_NXPARSER_H
+#endif //MOD_DEFENDER_RULEPARSER_H

@@ -1,28 +1,28 @@
 #include <apr_strings.h>
 #include "mod_defender.hpp"
-#include "CApplication.hpp"
+#include "RuntimeScanner.hpp"
 
 extern module AP_MODULE_DECLARE_DATA defender_module;
 
 /* Custom definition to hold any configuration data we may need.
-   At this stage we just use it to keep a copy of the CApplication
+   At this stage we just use it to keep a copy of the RuntimeScanner
    object pointer. Later we will add more when we need specific custom
    configuration information. */
 typedef struct {
-    void *vpCApplication;
+    void *vpRuntimeScanner;
 } defender_config_t;
 
-NxParser* parser = nullptr;
+RuleParser* parser = nullptr;
 
 apr_array_header_t *tmpMainRulesArray;
 apr_array_header_t *tmpCheckRulesArray;
 apr_array_header_t *tmpBasicRulesArray;
 
-/* Custom function to ensure our CApplication get's deleted at the
+/* Custom function to ensure our RuntimeScanner get's deleted at the
    end of the request cycle. */
-apr_status_t defender_delete_capplication_object(void *inPtr) {
+apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     if (inPtr)
-        delete (CApplication *) inPtr;
+        delete (RuntimeScanner *) inPtr;
     return OK;
 }
 
@@ -35,10 +35,10 @@ defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
     return pReturnValue;
 }
 
-apr_status_t defender_delete_nxparser_object(void *inPtr) {
+apr_status_t defender_delete_ruleparser_object(void *inPtr) {
     if (inPtr) {
         cerr <<  "mod_defender: " << KYEL "deleting parser..." KNRM << endl;
-        delete (NxParser *) inPtr;
+        delete (RuleParser *) inPtr;
     }
     return OK;
 }
@@ -57,17 +57,15 @@ int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_r
 //        }
 
 //        cerr << Util::formatLog(DEFLOG_NOTICE, NULL);
-//        cerr << "NxParser loaded" << endl;
+//        cerr << "RuleParser loaded" << endl;
 
-        ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "NxParser initializing...");
+        ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initializing...");
 
-        parser = new NxParser(s->process->pool);
+        parser = new RuleParser(s->process->pool);
         parser->parseMainRules(tmpMainRulesArray);
         parser->parseCheckRules(tmpCheckRulesArray);
         parser->parseBasicRules(tmpBasicRulesArray);
-
-
-        parser->createHashTables();
+        parser->generateHashTables();
 
         /* clear the temporary arrays */
         apr_array_clear(tmpMainRulesArray);
@@ -75,7 +73,7 @@ int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_r
         apr_array_clear(tmpBasicRulesArray);
 
         /* Schedule main cleanup for later, when the main pool is destroyed. */
-//        apr_pool_cleanup_register(pconf, (void *)s, defender_delete_nxparser_object, apr_pool_cleanup_null);
+//        apr_pool_cleanup_register(pconf, (void *)s, defender_delete_ruleparser_object, apr_pool_cleanup_null);
     }
 }
 
@@ -88,53 +86,28 @@ int defender_handler(request_rec *r) {
     if (parser == nullptr)
         return HTTP_SERVICE_UNAVAILABLE;
 
-//    for (const main_rule_t &rule : dcfg->mainRules) {
-//        fprintf(stderr, "%d ", rule.rxMz);
-//        if (rule.rxMz)
-//            fprintf(stderr, "%s ", "<regex> ");
-//        else
-//            fprintf(stderr, "%s ", rule.matchPaternStr);
-//
-//        for (const pair<const char*, int> &sc : rule.scores)
-//            fprintf(stderr, "%s %d ", sc.first, sc.second);
-//
-//        fprintf(stderr, "%s ", rule.msg);
-//        fprintf(stderr, "%d ", rule.id);
-//        fprintf(stderr, "\n");
-//    }
-
-//    for (const auto& match : dcfg->checkRules) {
-//        cerr <<  match.first << " ";
-//        cerr <<  match.second.comparator << " ";
-//        cerr <<  match.second.limit << " ";
-//        cerr <<  match.second.action << " ";
-//        cerr << endl;
-//    }
-
-//    return DECLINED; // STOP THE HANDLE
-
     /* Create an instance of our application. */
-    CApplication *pApp = new CApplication(r, scfg, *parser);
+    RuntimeScanner *runtimeScanner = new RuntimeScanner(r, scfg, *parser);
 
-    if (pApp == nullptr)
+    if (runtimeScanner == nullptr)
         return HTTP_SERVICE_UNAVAILABLE;
 
-    /* Register a C function to delete pApp
+    /* Register a C function to delete runtimeScanner
        at the end of the request cycle. */
-    apr_pool_cleanup_register(r->pool, (void *) pApp, defender_delete_capplication_object, apr_pool_cleanup_null);
+    apr_pool_cleanup_register(r->pool, (void *) runtimeScanner, defender_delete_runtimescanner_object, apr_pool_cleanup_null);
 
     /* Reserve a temporary memory block from the
        request pool to store data between hooks. */
     defender_config_t *pDefenderConfig = (defender_config_t *) apr_palloc(r->pool, sizeof(defender_config_t));
 
     /* Remember our application pointer for future calls. */
-    pDefenderConfig->vpCApplication = (void *) pApp;
+    pDefenderConfig->vpRuntimeScanner = (void *) runtimeScanner;
 
     /* Register our config data structure for our module for retrieval later as required */
     ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
 
     /* Run our application handler. */
-    return pApp->runHandler();
+    return runtimeScanner->runHandler();
 }
 
 int pre_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp) {
@@ -153,7 +126,7 @@ void defender_register_hooks(apr_pool_t *p) {
 }
 
 /**
- * This function is called when the "NxErrorLog" configuration directive is parsed.
+ * This function is called when the "MatchLog" configuration directive is parsed.
  */
 const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     // get the module configuration (this is the structure created by create_server_config())
@@ -189,18 +162,18 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     return NULL; // success
 }
 
-const char *set_nx_main_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
+const char *set_mainrules(cmd_parms *cmd, void *sconf_, const char *arg) {
     *(const char **) apr_array_push(tmpMainRulesArray) = apr_pstrdup(tmpMainRulesArray->pool, arg);
     return NULL;
 }
 
-const char *set_nx_check_rules(cmd_parms *cmd, void *sconf_, const char *arg1, const char *arg2) {
+const char *set_checkrules(cmd_parms *cmd, void *sconf_, const char *arg1, const char *arg2) {
     *(const char **) apr_array_push(tmpCheckRulesArray) = apr_pstrdup(tmpCheckRulesArray->pool, arg1);
     *(const char **) apr_array_push(tmpCheckRulesArray) = apr_pstrdup(tmpCheckRulesArray->pool, arg2);
     return NULL;
 }
 
-const char *set_nx_basic_rules(cmd_parms *cmd, void *sconf_, const char *arg) {
+const char *set_basicrules(cmd_parms *cmd, void *sconf_, const char *arg) {
     *(const char **) apr_array_push(tmpBasicRulesArray) = apr_pstrdup(tmpBasicRulesArray->pool, arg);
     return NULL;
 }
@@ -212,12 +185,12 @@ const char *skip_directive() { return NULL; }
  * A declaration of the configuration directives that are supported by this module.
  */
 const command_rec directives[] = {
-        {"NxErrorLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the errorlog file"},
-        {"MainRule",     (cmd_func) set_nx_main_rules,  NULL, RSRC_CONF, ITERATE,  "Match directive"},
+        {"MatchLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the match log"},
+        {"MainRule",     (cmd_func) set_mainrules,  NULL, RSRC_CONF, ITERATE,  "Match directive"},
         {"LearningMode", (cmd_func) skip_directive,     NULL, RSRC_CONF, TAKE1,    ""},
         {"SecRules",     (cmd_func) skip_directive,     NULL, RSRC_CONF, TAKE1,    ""},
-        {"CheckRule",    (cmd_func) set_nx_check_rules, NULL, RSRC_CONF, ITERATE2, "Score directive"},
-        {"BasicRule",    (cmd_func) set_nx_basic_rules, NULL, RSRC_CONF, ITERATE,  "Whitelist directive"},
+        {"CheckRule",    (cmd_func) set_checkrules, NULL, RSRC_CONF, ITERATE2, "Score directive"},
+        {"BasicRule",    (cmd_func) set_basicrules, NULL, RSRC_CONF, ITERATE,  "Whitelist directive"},
         {NULL}
 };
 

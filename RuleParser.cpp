@@ -1,7 +1,7 @@
 #include <apr_strings.h>
-#include "NxParser.h"
+#include "RuleParser.h"
 
-NxParser::NxParser(apr_pool_t *pool) {
+RuleParser::RuleParser(apr_pool_t *pool) {
     p = pool;
 
     /* Internal rules */
@@ -16,7 +16,7 @@ NxParser::NxParser(apr_pool_t *pool) {
     internalRules[18] = libxss;
 }
 
-void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
+void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
     int ruleCount = 0;
     for (int i = 0; i < rulesArray->nelts; i += 5) {
         bool error = false;
@@ -35,7 +35,7 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
             try {
                 rule.br.matchPaternRx = regex(matchPatern.second);
             } catch (std::regex_error &e) {
-                cerr << "what: " << e.what() << "; code: " << parseCode(e.code()) << endl;
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                 error = true;
             }
             DEBUG_CONF_MR(matchPatern.second << " ");
@@ -109,13 +109,16 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
             DEBUG_CONF_MR(";");
         }
 
-        ruleCount++;
+        if (!error)
+            ruleCount++;
+        else
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%d skipped", rule.id);
         DEBUG_CONF_MR(endl);
     }
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d MainRules loaded", ruleCount);
 }
 
-void NxParser::parseCheckRules(apr_array_header_t *rulesArray) {
+void RuleParser::parseCheckRules(apr_array_header_t *rulesArray) {
     int ruleCount = 0;
     for (int i = 0; i < rulesArray->nelts; i += 2) {
         DEBUG_CONF_CR("CheckRule ");
@@ -173,7 +176,7 @@ void NxParser::parseCheckRules(apr_array_header_t *rulesArray) {
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d CheckRules loaded", ruleCount);
 }
 
-void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
+void RuleParser::parseBasicRules(apr_array_header_t *rulesArray) {
     int ruleCount = 0;
     for (int i = 0; i < rulesArray->nelts; i += 3) {
         DEBUG_CONF_BR("BasicRule ");
@@ -206,7 +209,7 @@ void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d BasicRules loaded", ruleCount);
 }
 
-void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
+void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
     vector<string> matchZones = Util::split(rawMatchZone, '|');
     for (const string &mz : matchZones) {
         if (mz[0] != '$') {
@@ -295,7 +298,7 @@ void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                 try {
                     customRule.targetRx = regex(cmz.second);
                 } catch (std::regex_error &e) {
-                    cerr << "what: " << e.what() << "; code: " << parseCode(e.code()) << endl;
+                    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                     continue;
                 }
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
@@ -307,7 +310,7 @@ void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
 
 /* check rule, returns associed zone, as well as location index.
   location index refers to $URL:bla or $ARGS_VAR:bla */
-void NxParser::wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
+void RuleParser::wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
     if (curr.br.bodyMz || curr.br.bodyVarMz)
         zone = BODY;
     else if (curr.br.headersMz || curr.br.bodyVarMz)
@@ -339,7 +342,7 @@ void NxParser::wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone,
     }
 }
 
-void NxParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx,
+void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx,
                        int &name_idx) {
     string fullname = "";
     if (curr.br.targetName) // if WL targets variable name instead of content, prefix hash with '#'
@@ -390,7 +393,7 @@ void NxParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, en
 ** So, we will aggregate all the rules that are pointing to the same URL together,
 ** as well as rules targetting the same argument name / zone.
 */
-void NxParser::createHashTables() {
+void RuleParser::generateHashTables() {
     for (http_rule_t &curr_r : whitelistRules) {
         int uri_idx = -1, name_idx = -1;
         enum DUMMY_MATCH_ZONE zone = UNKNOWN;
@@ -450,7 +453,7 @@ void NxParser::createHashTables() {
     }
 }
 
-bool NxParser::checkIds(int matchId, const vector<int> &wlIds) {
+bool RuleParser::checkIds(int matchId, const vector<int> &wlIds) {
     bool negative = false;
 
     for (const int &wlId : wlIds) {
@@ -467,7 +470,7 @@ bool NxParser::checkIds(int matchId, const vector<int> &wlIds) {
     return negative;
 }
 
-bool NxParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
+bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
                                   enum MATCH_TYPE type, bool targetName) {
     if (zone == FILE_EXT)
         zone = BODY; // FILE_EXT zone is just a hack, as it indeed targets BODY
@@ -513,7 +516,7 @@ bool NxParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, 
 }
 
 // name is hashkey
-bool NxParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone,
+bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone,
                                     bool targetName) {
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
@@ -642,7 +645,7 @@ bool NxParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, con
     return false;
 }
 
-bool NxParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone, bool targetName) {
+bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone, bool targetName) {
     /* Look it up in regexed whitelists for matchzones */
     if (rxmz_wlr.size() > 0)
         return false;
@@ -708,7 +711,7 @@ bool NxParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, 
     }
 }
 
-bool NxParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum DUMMY_MATCH_ZONE zone) {
+bool RuleParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum DUMMY_MATCH_ZONE zone) {
     string keyLowered = string(key);
     std::transform(keyLowered.begin(), keyLowered.end(), keyLowered.begin(), ::tolower);
 
@@ -743,7 +746,7 @@ bool NxParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum DU
     return false;
 }
 
-string NxParser::parseCode(std::regex_constants::error_type etype) {
+string RuleParser::parseCode(std::regex_constants::error_type etype) {
     switch (etype) {
         case std::regex_constants::error_collate:
             return "error_collate: invalid collating element request";

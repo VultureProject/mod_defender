@@ -17,7 +17,7 @@
 #include <http_connection.h>
 #include <http_core.h>
 #include <http_log.h>
-#include "NxParser.h"
+#include "RuleParser.h"
 
 // Shell colors
 #define KNRM  "\x1B[0m"
@@ -40,8 +40,6 @@ APLOG_USE_MODULE(defender);
 typedef struct {
     char *errorlog_path;
     apr_file_t *errorlog_fd;
-    char *nxcorerules_path;
-    apr_file_t *nxcorerules_fd;
 } server_config_t;
 
 #endif /* MOD_DEFENDER_HPP */

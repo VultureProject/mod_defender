@@ -1,11 +1,10 @@
-#include "CApplication.hpp"
+#include "RuntimeScanner.hpp"
 #include <apr_strings.h>
 #include <util_script.h>
-#include <iomanip>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
 
-CApplication::CApplication(request_rec* rec, server_config_t* scfg, NxParser& parser) : parser(parser) {
+RuntimeScanner::RuntimeScanner(request_rec* rec, server_config_t* scfg, RuleParser& parser) : parser(parser) {
     r = rec;
     this->scfg = scfg;
     pool = r->pool;
@@ -25,7 +24,7 @@ CApplication::CApplication(request_rec* rec, server_config_t* scfg, NxParser& pa
 /*
  * Retrieve variables from POST form data
  */
-void CApplication::readPost() {
+void RuntimeScanner::readPost() {
     apr_array_header_t *POST = NULL;
     int res = ap_parse_form_data(r, NULL, &POST, -1, HUGE_STRING_LEN);
     if (res != OK || !POST) return; /* Return NULL if we failed or if there is no POST data */
@@ -51,7 +50,7 @@ void CApplication::readPost() {
  * Callback function to store each key and value of
  * an apr_table_t into a vector
  */
-int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
+int RuntimeScanner::storeTable(void *pVoid, const char *key, const char *value) {
     vector<pair<const string, const string>>* kvVector = static_cast<vector<pair<const string, const string>>*>(pVoid);
     string keyLower = string(key);
     string valueLower = string(value);
@@ -61,7 +60,7 @@ int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const string& varName) {
+string RuntimeScanner::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const string& varName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
@@ -82,7 +81,7 @@ string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE 
     return ss.str();
 }
 
-void CApplication::applyCheckRuleAction(const rule_action_t& action) {
+void RuntimeScanner::applyCheckRuleAction(const rule_action_t& action) {
     if (action == BLOCK)
         block = true;
     else if (action == DROP)
@@ -93,7 +92,7 @@ void CApplication::applyCheckRuleAction(const rule_action_t& action) {
         log = true;
 }
 
-void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
+void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int matchCount) {
     for (const pair<const char*, int> &tagScore : rule.scores) {
         bool matched = false;
         int& score = matchScores[tagScore.first];
@@ -112,7 +111,7 @@ void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
     }
 }
 
-bool CApplication::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string& varName) {
+bool RuntimeScanner::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string& varName) {
     bool eligible = false;
     eligible = ((zone == HEADERS && rule.br.headersMz) || (zone == URL && rule.br.specificUrlMz) ||
                 (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz));
@@ -160,7 +159,7 @@ bool CApplication::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t 
 /*
  * MainRules check
  */
-void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule) {
+void RuntimeScanner::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule) {
 //    cerr << "→ Checking " << varName << "=" << value << " in " << dummy_match_zones[zone] << " with rule #" << rule.id << " ";
 //    if (!rule.br.rxMz)
 //        cerr << "pattern: " << rule.br.matchPaternStr << endl;
@@ -199,20 +198,20 @@ void CApplication::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, c
     }
 }
 
-void CApplication::checkRulesOnVars(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v,
+void RuntimeScanner::checkRulesOnVars(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v,
                                     const http_rule_t &rule) {
     for (const pair<const string, const string>& pair : v) {
         checkVar(zone, pair.first, pair.second, rule);
     }
 }
 
-void CApplication::checkLibInjectionOnVar(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v) {
+void RuntimeScanner::checkLibInjectionOnVar(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v) {
     for (const pair<const string, const string>& pair : v) {
         checkLibInjection(zone, pair.first, pair.second);
     }
 }
 
-void CApplication::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value) {
+void RuntimeScanner::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value) {
     struct libinjection_sqli_state state;
     const char* valueCstr = apr_pstrdup(pool, value.c_str());
     size_t slen = strlen(value.c_str());
@@ -234,7 +233,7 @@ void CApplication::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string& v
     }
 }
 
-int CApplication::runHandler() {
+int RuntimeScanner::runHandler() {
     int returnVal = DECLINED;
 
     for (const http_rule_t &rule : parser.getRules) {
@@ -298,7 +297,6 @@ int CApplication::runHandler() {
             returnVal = HTTP_FORBIDDEN;
     }
 
-//    cerr << "mod_defender: " << rulesMatchedCount << " match(es)" << endl;
     cerr << flush;
 
     return returnVal;
