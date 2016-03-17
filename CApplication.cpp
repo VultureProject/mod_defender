@@ -4,14 +4,11 @@
 #include <iomanip>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-#include "NxParser.h"
-#include "mod_defender.hpp"
 
-CApplication::CApplication(request_rec* rec, server_config_t* scfg) : parser(scfg->parser) {
+CApplication::CApplication(request_rec* rec, server_config_t* scfg, NxParser& parser) : parser(parser) {
     r = rec;
     this->scfg = scfg;
     pool = r->pool;
-    this->checkRules = scfg->parser.checkRules;
 
     apr_table_do(storeTable, &headers, r->headers_in, NULL); // Store every HTTP header received
 
@@ -41,7 +38,11 @@ void CApplication::readPost() {
         char *buffer = (char *) apr_palloc(pool, size + 1);
         apr_brigade_flatten(formPair->value, buffer, &size);
         buffer[len] = 0;
-        body.emplace_back(formPair->name, buffer);
+        string key = string(formPair->name);
+        string value = string(buffer);
+        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+        std::transform(value.begin(), value.end(), value.begin(), ::tolower);
+        body.emplace_back(key, value);
         i++;
     }
 }
@@ -52,7 +53,11 @@ void CApplication::readPost() {
  */
 int CApplication::storeTable(void *pVoid, const char *key, const char *value) {
     vector<pair<const string, const string>>* kvVector = static_cast<vector<pair<const string, const string>>*>(pVoid);
-    kvVector->emplace_back(key, value);
+    string keyLower = string(key);
+    string valueLower = string(value);
+    std::transform(keyLower.begin(), keyLower.end(), keyLower.begin(), ::tolower);
+    std::transform(valueLower.begin(), valueLower.end(), valueLower.begin(), ::tolower);
+    kvVector->emplace_back(keyLower, valueLower);
     return 1; // Zero would stop iterating; any other return value continues
 }
 
@@ -65,12 +70,14 @@ string CApplication::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE 
     ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
     ss << "var_name" << rulesMatchedCount << "=" << varName;
 
-    cerr << KRED "⚠ rule #" << rule.id << " ";
+    cerr << Util::formatLog(DEFLOG_ERROR, r->useragent_ip);
+    cerr << KRED "⚠ Rule #" << rule.id << " ";
     if (!rule.br.rxMz)
-        cerr << "(pattern: " << rule.br.matchPaternStr << ") matched";
+        cerr << "(" << rule.br.matchPaternStr << ") ";
     else
-        cerr << "(<regex>) matched";
-    cerr << " with var " << varName << " in " << dummy_match_zones[zone] << KNRM << endl;
+        cerr << "(<regex>) ";
+    cerr << "matched at ";
+    cerr << dummy_match_zones[zone] << ":" << varName << KNRM << endl;
 
     return ss.str();
 }
@@ -91,7 +98,7 @@ void CApplication::applyCheckRule(const http_rule_t &rule, int matchCount) {
         bool matched = false;
         int& score = matchScores[tagScore.first];
         score += tagScore.second * matchCount;
-        check_rule_t& checkRule = checkRules[tagScore.first];
+        check_rule_t& checkRule = parser.checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL)
             matched = (score >= checkRule.limit);
         else if (checkRule.comparator == SUP)
@@ -291,7 +298,7 @@ int CApplication::runHandler() {
             returnVal = HTTP_FORBIDDEN;
     }
 
-    cerr << "mod_defender: " << rulesMatchedCount << " match(es)" << endl;
+//    cerr << "mod_defender: " << rulesMatchedCount << " match(es)" << endl;
     cerr << flush;
 
     return returnVal;

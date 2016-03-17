@@ -1,7 +1,6 @@
 #ifndef MOD_DEFENDER_NXPARSER_H
 #define MOD_DEFENDER_NXPARSER_H
 
-#include <apr_file_io.h>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -9,6 +8,7 @@
 #include <algorithm>
 #include <iterator>
 #include "Util.h"
+#include "mod_defender.hpp"
 #include <regex>
 #include <unordered_map>
 
@@ -224,6 +224,7 @@ private:
     bool isRuleWhitelistedRx(const http_rule_t &rule, const string &name, DUMMY_MATCH_ZONE zone, bool targetName);
     bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
+    string parseCode(std::regex_constants::error_type etype);
 
 public:
     unordered_map<string, check_rule_t> checkRules;

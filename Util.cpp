@@ -48,3 +48,35 @@ int Util::countSubstring(const std::string &str, const std::string &sub) {
     }
     return count;
 }
+
+string Util::apacheTimeFmt() {
+    stringstream ss;
+    high_resolution_clock::time_point p = high_resolution_clock::now();
+
+    milliseconds millis = duration_cast<milliseconds>(p.time_since_epoch());
+    microseconds micros = std::chrono::duration_cast<std::chrono::microseconds>(p.time_since_epoch());
+
+    seconds s = duration_cast<seconds>(millis);
+    std::time_t t = s.count();
+    int fractional_seconds = millis.count() % 1000;
+    int fractional_millis = micros.count() % 1000;
+
+    std::tm * ptm = std::localtime(&t);
+    ss << std::put_time(ptm, "%a %b %d %T");
+    ss << ".";
+    ss << std::setfill('0') << std::setw(3) << fractional_seconds;
+    ss << std::setfill('0') << std::setw(3) << fractional_millis;
+    ss << " ";
+    ss << std::put_time(ptm, "%Y");
+    return ss.str();
+}
+
+string Util::formatLog(enum DEF_LOGLEVEL loglevel, char* client) {
+    stringstream ss;
+    ss << "[" << Util::apacheTimeFmt() << "] ";
+    ss << "[defender:" << logLevels[loglevel] << "] ";
+    ss << "[pid " << getpid() << "] ";
+    if (client != NULL)
+        ss << "[client " << client << "] ";
+    return ss.str();
+}

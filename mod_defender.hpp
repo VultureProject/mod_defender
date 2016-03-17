@@ -19,6 +19,7 @@
 #include <http_log.h>
 #include "NxParser.h"
 
+// Shell colors
 #define KNRM  "\x1B[0m"
 #define KRED  "\x1B[31m"
 #define KGRN  "\x1B[32m"
@@ -28,6 +29,11 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
+// Extra Apache 2.4+ C++ module declaration
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(defender);
+#endif
+
 /*
  * Per-server configuration structure.
  */
@@ -36,8 +42,6 @@ typedef struct {
     apr_file_t *errorlog_fd;
     char *nxcorerules_path;
     apr_file_t *nxcorerules_fd;
-    NxParser parser;
-    bool confParsed = false;
 } server_config_t;
 
 #endif /* MOD_DEFENDER_HPP */

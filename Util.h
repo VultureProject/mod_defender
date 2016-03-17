@@ -7,13 +7,42 @@
 #include <locale>
 #include <iostream>
 #include <sstream>
+#include <iomanip>
+#include <chrono>
+#include <sys/types.h>
+#include <unistd.h>
 
+using std::chrono::system_clock;
+using namespace std::chrono;
 using std::vector;
 using std::string;
 using std::stringstream;
 using std::endl;
 using std::istringstream;
 using std::pair;
+
+enum DEF_LOGLEVEL {
+    DEFLOG_EMERG = 0,
+    DEFLOG_ALERT,
+    DEFLOG_CRIT,
+    DEFLOG_ERROR,
+    DEFLOG_WARN,
+    DEFLOG_NOTICE,
+    DEFLOG_INFO,
+    DEFLOG_DEBUG
+};
+
+static const char *logLevels[] = {
+        "emerg",
+        "alert",
+        "crit",
+        "error",
+        "warn",
+        "notice",
+        "info",
+        "debug",
+        NULL
+};
 
 class Util {
 
@@ -36,6 +65,8 @@ public:
     static pair<string, string> splitAtFirst(const string &s, string delim);
     static vector<int> splitToInt(string &s, char delimiter);
     static int countSubstring(const string &str, const string &sub);
+    static string apacheTimeFmt();
+    static string formatLog(DEF_LOGLEVEL loglevel, char *client);
 };
 
 

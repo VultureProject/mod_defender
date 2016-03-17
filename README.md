@@ -2,7 +2,7 @@
 Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisting policy
 
 ### Dependencies
-* apache2-dev package to provide APXS and Apache2 headers
+* apache2-dev package to provide Apache Extension Tool and Apache2 headers
 * gcc & g++ >= 5.2
 * CMake >= 3.2
 
@@ -18,7 +18,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	$ make 
 	```
 
-1. Use APXS to install the module
+1. Use Apache Extension Tool to install the module
 	```sh
 	$ sudo apxs -n defender -i lib/mod_defender.so
 	```

@@ -17,7 +17,9 @@ NxParser::NxParser(apr_pool_t *pool) {
 }
 
 void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
+    int ruleCount = 0;
     for (int i = 0; i < rulesArray->nelts; i += 5) {
+        bool error = false;
         DEBUG_CONF_MR("MainRule ");
         http_rule_t rule;
         rule.type = MAIN_RULE;
@@ -30,7 +32,12 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
         rule.br.rxMz = (matchPatern.first == "rx");
         DEBUG_CONF_MR((rule.br.rxMz ? "rx " : "str "));
         if (matchPatern.first == "rx") {
-            rule.br.matchPaternRx = regex(matchPatern.second);
+            try {
+                rule.br.matchPaternRx = regex(matchPatern.second);
+            } catch (std::regex_error &e) {
+                cerr << "what: " << e.what() << "; code: " << parseCode(e.code()) << endl;
+                error = true;
+            }
             DEBUG_CONF_MR(matchPatern.second << " ");
         }
         if (matchPatern.first == "str") {
@@ -55,45 +62,61 @@ void NxParser::parseMainRules(apr_array_header_t *rulesArray) {
         rule.id = std::stoi(((const char **) rulesArray->elts)[i + 4] + 3);
         DEBUG_CONF_MR(rule.id << " ");
 
-        if (rule.br.headersMz) {
-            headerRules.push_back(rule);
-            DEBUG_CONF_MR("[header] ");
-        }
-        if (rule.br.bodyMz || rule.br.bodyVarMz) { // push in body match rules (POST/PUT)
-            bodyRules.push_back(rule);
-            DEBUG_CONF_MR("[body] ");
-        }
-        if (rule.br.urlMz) { // push in generic rules, as it's matching the URI
-            genericRules.push_back(rule);
-            DEBUG_CONF_MR("[generic] ");
-        }
-        if (rule.br.argsMz || rule.br.argsVarMz) { // push in GET arg rules, but we should push in POST rules too
-            getRules.push_back(rule);
-            DEBUG_CONF_MR("[get] ");
-        }
-        /* push in custom locations. It's a rule matching a VAR_NAME or an EXACT_URI :
-            - GET_VAR, POST_VAR, URI */
-        if (rule.br.customLocation) {
-            for (const custom_rule_location_t &loc : rule.br.customLocations) {
-                if (loc.argsVar) {
-                    getRules.push_back(rule);
-                    DEBUG_CONF_MR("[get] ");
-                }
-                if (loc.bodyVar) {
-                    bodyRules.push_back(rule);
-                    DEBUG_CONF_MR("[body] ");
-                }
-                if (loc.headersVar) {
-                    headerRules.push_back(rule);
-                    DEBUG_CONF_MR("[header] ");
+        if (!error) {
+            if (rule.br.headersMz) {
+                headerRules.push_back(rule);
+                DEBUG_CONF_MR("[header] ");
+            }
+            if (rule.br.bodyMz || rule.br.bodyVarMz) { // push in body match rules (POST/PUT)
+                bodyRules.push_back(rule);
+                DEBUG_CONF_MR("[body] ");
+            }
+            if (rule.br.urlMz) { // push in generic rules, as it's matching the URI
+                genericRules.push_back(rule);
+                DEBUG_CONF_MR("[generic] ");
+            }
+            if (rule.br.argsMz || rule.br.argsVarMz) { // push in GET arg rules, but we should push in POST rules too
+                getRules.push_back(rule);
+                DEBUG_CONF_MR("[get] ");
+            }
+            /* push in custom locations. It's a rule matching a VAR_NAME or an EXACT_URI :
+                - GET_VAR, POST_VAR, URI */
+            if (rule.br.customLocation) {
+                for (const custom_rule_location_t &loc : rule.br.customLocations) {
+                    if (loc.argsVar) {
+                        getRules.push_back(rule);
+                        DEBUG_CONF_MR("[get] ");
+                    }
+                    if (loc.bodyVar) {
+                        bodyRules.push_back(rule);
+                        DEBUG_CONF_MR("[body] ");
+                    }
+                    if (loc.headersVar) {
+                        headerRules.push_back(rule);
+                        DEBUG_CONF_MR("[header] ");
+                    }
                 }
             }
         }
+
+        /*
+         * Nginx conf directive ends with a semicolon,
+         * Apache does not, so we skip it
+         */
+        const char* possibleSemiColor = ((const char **) rulesArray->elts)[i + 5];
+        if (possibleSemiColor != NULL && strcmp(possibleSemiColor, ";") == 0) {
+            i++;
+            DEBUG_CONF_MR(";");
+        }
+
+        ruleCount++;
         DEBUG_CONF_MR(endl);
     }
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d MainRules loaded", ruleCount);
 }
 
 void NxParser::parseCheckRules(apr_array_header_t *rulesArray) {
+    int ruleCount = 0;
     for (int i = 0; i < rulesArray->nelts; i += 2) {
         DEBUG_CONF_CR("CheckRule ");
         check_rule_t chkrule;
@@ -144,11 +167,14 @@ void NxParser::parseCheckRules(apr_array_header_t *rulesArray) {
         }
 
         checkRules[tag] = chkrule;
+        ruleCount++;
         DEBUG_CONF_CR(endl);
     }
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d CheckRules loaded", ruleCount);
 }
 
 void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
+    int ruleCount = 0;
     for (int i = 0; i < rulesArray->nelts; i += 3) {
         DEBUG_CONF_BR("BasicRule ");
         http_rule_t rule;
@@ -174,8 +200,10 @@ void NxParser::parseBasicRules(apr_array_header_t *rulesArray) {
         parseMatchZone(rule, rawMatchZone);
 
         whitelistRules.push_back(rule);
+        ruleCount++;
         DEBUG_CONF_BR(endl);
     }
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d BasicRules loaded", ruleCount);
 }
 
 void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
@@ -264,7 +292,12 @@ void NxParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                 DEBUG_CONF_MZ("(rx)" << cmz.second << " ");
             }
             else {
-                customRule.targetRx = regex(cmz.second);
+                try {
+                    customRule.targetRx = regex(cmz.second);
+                } catch (std::regex_error &e) {
+                    cerr << "what: " << e.what() << "; code: " << parseCode(e.code()) << endl;
+                    continue;
+                }
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
             }
             rule.br.customLocations.push_back(customRule);
@@ -708,4 +741,37 @@ bool NxParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum DU
         }
     }
     return false;
+}
+
+string NxParser::parseCode(std::regex_constants::error_type etype) {
+    switch (etype) {
+        case std::regex_constants::error_collate:
+            return "error_collate: invalid collating element request";
+        case std::regex_constants::error_ctype:
+            return "error_ctype: invalid character class";
+        case std::regex_constants::error_escape:
+            return "error_escape: invalid escape character or trailing escape";
+        case std::regex_constants::error_backref:
+            return "error_backref: invalid back reference";
+        case std::regex_constants::error_brack:
+            return "error_brack: mismatched bracket([ or ])";
+        case std::regex_constants::error_paren:
+            return "error_paren: mismatched parentheses(( or ))";
+        case std::regex_constants::error_brace:
+            return "error_brace: mismatched brace({ or })";
+        case std::regex_constants::error_badbrace:
+            return "error_badbrace: invalid range inside a { }";
+        case std::regex_constants::error_range:
+            return "erro_range: invalid character range(e.g., [z-a])";
+        case std::regex_constants::error_space:
+            return "error_space: insufficient memory to handle this regular expression";
+        case std::regex_constants::error_badrepeat:
+            return "error_badrepeat: a repetition character (*, ?, +, or {) was not preceded by a valid regular expression";
+        case std::regex_constants::error_complexity:
+            return "error_complexity: the requested match is too complex";
+        case std::regex_constants::error_stack:
+            return "error_stack: insufficient memory to evaluate a match";
+        default:
+            return "";
+    }
 }

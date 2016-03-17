@@ -38,7 +38,6 @@ private:
     vector<pair<const string, const string>> args;
     vector<pair<const string, const string>> body;
     string uri;
-    unordered_map<string, check_rule_t> checkRules;
     unordered_map<string, int> matchScores;
 
     bool block = false;
@@ -47,7 +46,7 @@ private:
     bool log = false;
 
 public:
-    CApplication(request_rec* rec, server_config_t* scfg);
+    CApplication(request_rec* rec, server_config_t* scfg, NxParser& parser);
     static int storeTable(void*, const char*, const char*);
     void readPost();
     int runHandler();
