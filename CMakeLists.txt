@@ -8,7 +8,7 @@ set(CMAKE_SHARED_LIBRARY_OUTPUT_NAME "")
 include_directories(/usr/include/apache2 /usr/include/apr-1.0 /usr/include/apr-1 /usr/include /usr/local/include/apr-1/
         /usr/local/include/ /usr/local/include/apache24)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
 set(SOURCE_FILES mod_defender.cpp mod_defender.hpp RuntimeScanner.cpp RuntimeScanner.hpp libinjection/libinjection.h
         libinjection/libinjection_html5.c libinjection/libinjection_sqli.c libinjection/libinjection_sqli.h

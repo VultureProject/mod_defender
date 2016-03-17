@@ -56,9 +56,6 @@ int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_r
 //            fprintf(stderr, "%d: %s\n", i, s);
 //        }
 
-//        cerr << Util::formatLog(DEFLOG_NOTICE, NULL);
-//        cerr << "RuleParser loaded" << endl;
-
         ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initializing...");
 
         parser = new RuleParser(s->process->pool);
@@ -133,7 +130,7 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
 
     // make a duplicate of the argument's value using the command parameters pool.
-    scfg->errorlog_path = (char *) arg;
+    scfg->errorlog_path = apr_pstrdup(cmd->pool, arg);
 
     if (scfg->errorlog_path[0] == '|') {
         const char *pipe_name = scfg->errorlog_path + 1;
@@ -162,6 +159,22 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     return NULL; // success
 }
 
+const char *set_libinjection_sql_flag(cmd_parms *cmd, void *_scfg, const char *arg) {
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+    if (strcmp(arg, "1") == 0)
+        scfg->libinjection_sql = true;
+    scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
+    return NULL;
+}
+
+const char *set_libinjection_xss_flag(cmd_parms *cmd, void *_scfg, const char *arg) {
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+    if (strcmp(arg, "1") == 0)
+        scfg->libinjection_xss = true;
+    scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
+    return NULL;
+}
+
 const char *set_mainrules(cmd_parms *cmd, void *sconf_, const char *arg) {
     *(const char **) apr_array_push(tmpMainRulesArray) = apr_pstrdup(tmpMainRulesArray->pool, arg);
     return NULL;
@@ -185,12 +198,13 @@ const char *skip_directive() { return NULL; }
  * A declaration of the configuration directives that are supported by this module.
  */
 const command_rec directives[] = {
-        {"MatchLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the match log"},
         {"MainRule",     (cmd_func) set_mainrules,  NULL, RSRC_CONF, ITERATE,  "Match directive"},
-        {"LearningMode", (cmd_func) skip_directive,     NULL, RSRC_CONF, TAKE1,    ""},
-        {"SecRules",     (cmd_func) skip_directive,     NULL, RSRC_CONF, TAKE1,    ""},
         {"CheckRule",    (cmd_func) set_checkrules, NULL, RSRC_CONF, ITERATE2, "Score directive"},
         {"BasicRule",    (cmd_func) set_basicrules, NULL, RSRC_CONF, ITERATE,  "Whitelist directive"},
+        {"MatchLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the match log"},
+        {"LearningMode", (cmd_func) skip_directive,     NULL, RSRC_CONF, TAKE1,    ""},
+        {"LibinjectionSQL", (cmd_func) set_libinjection_sql_flag,     NULL, RSRC_CONF, TAKE1,    "Libinjection SQL toggle"},
+        {"LibinjectionXSS", (cmd_func) set_libinjection_xss_flag,     NULL, RSRC_CONF, TAKE1,    "Libinjection XSS toggle"},
         {NULL}
 };
 

@@ -3,6 +3,7 @@
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
+#include "mod_defender.hpp"
 
 RuntimeScanner::RuntimeScanner(request_rec* rec, server_config_t* scfg, RuleParser& parser) : parser(parser) {
     r = rec;
@@ -212,24 +213,29 @@ void RuntimeScanner::checkLibInjectionOnVar(enum DUMMY_MATCH_ZONE zone, vector<p
 }
 
 void RuntimeScanner::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value) {
-    struct libinjection_sqli_state state;
-    const char* valueCstr = apr_pstrdup(pool, value.c_str());
+    const char* valuecstr = apr_pstrdup(pool, value.c_str());
     size_t slen = strlen(value.c_str());
-    libinjection_sqli_init(&state, valueCstr, slen, FLAG_NONE);
 
-    if (libinjection_is_sqli(&state)) {
-        http_rule_t& libsqlirule = parser.internalRules[17];
-        libsqlirule.br.matchPaternStr = state.fingerprint;
-        matchVars << formatMatch(libsqlirule, zone, varName);
-        applyCheckRule(libsqlirule, 1);
-        rulesMatchedCount++;
+    if (scfg->libinjection_sql) {
+        struct libinjection_sqli_state state;
+        libinjection_sqli_init(&state, valuecstr, slen, FLAG_NONE);
+
+        if (libinjection_is_sqli(&state)) {
+            http_rule_t& libsqlirule = parser.internalRules[17];
+            libsqlirule.br.matchPaternStr = state.fingerprint;
+            matchVars << formatMatch(libsqlirule, zone, varName);
+            applyCheckRule(libsqlirule, 1);
+            rulesMatchedCount++;
+        }
     }
 
-    if (libinjection_xss(valueCstr, slen)) {
-        http_rule_t& libxssrule = parser.internalRules[18];
-        matchVars << formatMatch(libxssrule, zone, varName);
-        applyCheckRule(libxssrule, 1);
-        rulesMatchedCount++;
+    if (scfg->libinjection_xss) {
+        if (libinjection_xss(valuecstr, slen)) {
+            http_rule_t& libxssrule = parser.internalRules[18];
+            matchVars << formatMatch(libxssrule, zone, varName);
+            applyCheckRule(libxssrule, 1);
+            rulesMatchedCount++;
+        }
     }
 }
 
@@ -239,22 +245,26 @@ int RuntimeScanner::runHandler() {
     for (const http_rule_t &rule : parser.getRules) {
         checkRulesOnVars(ARGS, args, rule);
     }
-    checkLibInjectionOnVar(ARGS, args);
+    if (scfg->libinjection)
+        checkLibInjectionOnVar(ARGS, args);
     if ((strcmp(r->method, "POST") == 0 || strcmp(r->method, "PUT") == 0)) {
         for (const http_rule_t &rule : parser.bodyRules) {
             checkRulesOnVars(BODY, body, rule);
         }
-        checkLibInjectionOnVar(BODY, body);
+        if (scfg->libinjection)
+            checkLibInjectionOnVar(BODY, body);
     }
     for (const http_rule_t &rule : parser.headerRules) {
         checkRulesOnVars(HEADERS, headers, rule);
     }
-    checkLibInjectionOnVar(HEADERS, headers);
+    if (scfg->libinjection)
+        checkLibInjectionOnVar(HEADERS, headers);
     string empty = "";
     for (const http_rule_t &rule : parser.genericRules) {
         checkVar(URL, empty, uri, rule);
     }
-    checkLibInjection(URL, empty, uri);
+    if (scfg->libinjection)
+        checkLibInjection(URL, empty, uri);
 
     if (rulesMatchedCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());

@@ -50,7 +50,6 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	```
     ```sh
 	$ cat <<EOT | sudo tee /etc/moddefender/checkrules.conf > /dev/null
-    ## check rules
     CheckRule "\$SQL >= 8" BLOCK;
     CheckRule "\$RFI >= 8" BLOCK;
     CheckRule "\$TRAVERSAL >= 4" BLOCK;
@@ -64,8 +63,10 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     MatchLog \${APACHE_LOG_DIR}/moddef_match.log
     #Learning mode toggle
     LearningMode 1
-    #SecRules mode toggle
-    SecRules 1
+    #Libinjection SQL toggle
+    LibinjectionSQL 1
+    #Libinjection XSS toggle
+    LibinjectionXSS 1
     EOT
     ```
 
