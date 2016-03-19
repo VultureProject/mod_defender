@@ -12,7 +12,7 @@
 #include <regex>
 #include <unordered_map>
 
-#define DEBUG_CONFIG_MAINRULE
+//#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
 #define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
@@ -33,7 +33,7 @@
 #define DEBUG_CONF_BR(x)
 #endif
 
-#define DEBUG_CONFIG_MATCHZONE
+//#define DEBUG_CONFIG_MATCHZONE
 #ifdef DEBUG_CONFIG_MATCHZONE
 #define DEBUG_CONF_MZ(x) do { std::cerr << x; } while (0)
 #else
@@ -45,6 +45,13 @@
 #define DEBUG_CONF_HT(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_HT(x)
+#endif
+
+//#define DEBUG_CONFIG_WLRFIND
+#ifdef DEBUG_CONFIG_WLRFIND
+#define DEBUG_CONF_WLRF(x) do { std::cerr << x << endl; } while (0)
+#else
+#define DEBUG_CONF_WLRF(x)
 #endif
 
 //#define DEBUG_CONFIG_WL
@@ -97,7 +104,7 @@ typedef struct {
     bool headersVar = false; // match in [name] var of headers
     bool argsVar = false; // match in [name] var of args
     bool specificUrl = false; // match on URL [name]
-    const char *target = NULL; // to be used for string match zones
+    string target; // to be used for string match zones
     regex targetRx; // to be used for regexed match zones
 } custom_rule_location_t;
 
@@ -122,7 +129,7 @@ typedef struct {
     bool fileExt = false; // match on file upload extension
     /* set if defined "custom" match zone (GET_VAR/POST_VAR/...)  */
     vector<int> wlIds;
-    const char *target = NULL;
+    string target;
 } whitelist_location_t;
 
 enum MATCH_TYPE {
@@ -165,8 +172,8 @@ typedef struct {
 } whitelist_rule_t;
 
 typedef struct {
-    regex rx;
-    const char *str = NULL;
+    regex *rx = nullptr;
+    string str;
     bool rxMz = false;
     enum MATCH_ZONE zone;
     bool bodyMz = false;

@@ -31,7 +31,7 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
         pair<string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
         if (matchPatern.first == "rx") {
             try {
-                rule.br.rx = regex(matchPatern.second);
+                rule.br.rx = new regex(matchPatern.second);
             } catch (std::regex_error &e) {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                 error = true;
@@ -288,11 +288,12 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                 DEBUG_CONF_MZ("$BODY_VAR_X ");
             }
 
-            if (!rule.br.rxMz) {
-                customRule.target = apr_pstrdup(p, cmz.second.c_str());
+            if (!rule.br.rxMz) { // String MatchZone
+                std::transform(cmz.second.begin(), cmz.second.end(), cmz.second.begin(), ::tolower);
+                customRule.target = cmz.second;
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
             }
-            else {
+            else { // Regex MatchZone
                 try {
                     customRule.targetRx = regex(cmz.second);
                 } catch (std::regex_error &e) {
@@ -311,7 +312,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
 void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
     if (curr.br.bodyMz || curr.br.bodyVarMz)
         zone = BODY;
-    else if (curr.br.headersMz || curr.br.bodyVarMz)
+    else if (curr.br.headersMz || curr.br.headersVarMz)
         zone = HEADERS;
     else if (curr.br.argsMz || curr.br.argsVarMz)
         zone = ARGS;
@@ -326,14 +327,26 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int
             uri_idx = i;
         }
         if (custLoc.bodyVar) {
+            if (name_idx != -1) {
+                DEBUG_CONF_HT("whitelist can't target more than one BODY item.");
+                return;
+            }
             name_idx = i;
             zone = BODY;
         }
         if (custLoc.headersVar) {
+            if (name_idx != -1) {
+                DEBUG_CONF_HT("whitelist can't target more than one HEADERS item.");
+                return;
+            }
             name_idx = i;
             zone = HEADERS;
         }
         if (custLoc.argsVar) {
+            if (name_idx != -1) {
+                DEBUG_CONF_HT("whitelist can't target more than one ARGS item.");
+                return;
+            }
             name_idx = i;
             zone = ARGS;
         }
@@ -343,22 +356,33 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int
 void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum MATCH_ZONE &zone, int &uri_idx,
                        int &name_idx) {
     string fullname = "";
-    if (curr.br.targetName) // if WL targets variable name instead of content, prefix hash with '#'
+    /* if WL targets variable name instead of content, prefix hash with '#' */
+    if (curr.br.targetName) {
+        DEBUG_CONF_WLRF("whitelist targets |NAME");
         fullname += "#";
-    if (uri_idx != -1 && name_idx != -1) {
+    }
+    if (uri_idx != -1 && name_idx != -1) { // name AND uri
+        DEBUG_CONF_WLRF("whitelist has uri + name");
         fullname += curr.br.customLocations[uri_idx].target;
         fullname += "#";
         fullname += curr.br.customLocations[name_idx].target;
     }
-    else if (uri_idx != -1) {
+    else if (uri_idx != -1 && name_idx == -1) { // only uri
+        DEBUG_CONF_WLRF("whitelist has uri");
         fullname += curr.br.customLocations[uri_idx].target;
     }
-    else if (name_idx != -1) {
+    else if (name_idx != -1) { // only name
+        DEBUG_CONF_WLRF("whitelist has name");
         fullname += curr.br.customLocations[name_idx].target;
+    }
+    else {
+        DEBUG_CONF_WLRF("wlrFind problem");
+        return;
     }
 
     for (const whitelist_rule_t &wlr : tmp_wlr) {
-        if (wlr.name == fullname) {
+        if (wlr.name == fullname && wlr.zone == zone) {
+            DEBUG_CONF_WLRF("found existing 'same' WL : " << wlr.name);
             father_wlr = wlr;
             return;
         }
@@ -396,6 +420,7 @@ void RuleParser::generateHashTables() {
         int uri_idx = -1, name_idx = -1;
         enum MATCH_ZONE zone = UNKNOWN;
 
+        /* no custom location at all means that the rule is disabled */
         if (curr_r.br.customLocations.size() == 0) {
             disabled_rules.push_back(curr_r);
             continue;
@@ -513,7 +538,6 @@ bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name
     DEBUG_CONF_WL("finished wl check, failed.");
 }
 
-// name is hashkey
 bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum MATCH_ZONE zone,
                                     bool targetName) {
     /* Check if the rule is part of disabled rules for this location */
@@ -709,8 +733,8 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name
 }
 
 bool RuleParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum MATCH_ZONE zone) {
-    string keyLowered = string(key);
-    std::transform(keyLowered.begin(), keyLowered.end(), keyLowered.begin(), ::tolower);
+//    string keyLowered = string(key);
+//    std::transform(keyLowered.begin(), keyLowered.end(), keyLowered.begin(), ::tolower);
 
     if (zone == BODY || zone == FILE_EXT) {
         unordered_map<string, whitelist_rule_t>::const_iterator it = wlBodyHash.find(key);
