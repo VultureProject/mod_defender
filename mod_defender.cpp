@@ -4,14 +4,6 @@
 
 extern module AP_MODULE_DECLARE_DATA defender_module;
 
-/* Custom definition to hold any configuration data we may need.
-   At this stage we just use it to keep a copy of the RuntimeScanner
-   object pointer. Later we will add more when we need specific custom
-   configuration information. */
-typedef struct {
-    void *vpRuntimeScanner;
-} defender_config_t;
-
 RuleParser* parser = nullptr;
 
 apr_array_header_t *tmpMainRulesArray;
@@ -24,15 +16,6 @@ apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     if (inPtr)
         delete (RuntimeScanner *) inPtr;
     return OK;
-}
-
-/* Custom function to retrieve our defender_config_t* pointer previously
-   registered with Apache on this request cycle. */
-defender_config_t *defender_get_config_ptr(request_rec *inpRequest) {
-    defender_config_t *pReturnValue = NULL;
-    if (inpRequest != NULL)
-        pReturnValue = (defender_config_t *) ap_get_module_config(inpRequest->request_config, &defender_module);
-    return pReturnValue;
 }
 
 apr_status_t defender_delete_ruleparser_object(void *inPtr) {
@@ -92,16 +75,6 @@ int defender_handler(request_rec *r) {
     /* Register a C function to delete runtimeScanner
        at the end of the request cycle. */
     apr_pool_cleanup_register(r->pool, (void *) runtimeScanner, defender_delete_runtimescanner_object, apr_pool_cleanup_null);
-
-    /* Reserve a temporary memory block from the
-       request pool to store data between hooks. */
-    defender_config_t *pDefenderConfig = (defender_config_t *) apr_palloc(r->pool, sizeof(defender_config_t));
-
-    /* Remember our application pointer for future calls. */
-    pDefenderConfig->vpRuntimeScanner = (void *) runtimeScanner;
-
-    /* Register our config data structure for our module for retrieval later as required */
-    ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
 
     /* Run our application handler. */
     return runtimeScanner->runHandler();

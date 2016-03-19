@@ -206,8 +206,7 @@ typedef struct {
     const char *logMsg = NULL; // a specific log message
     /* List of scores increased on rule match. */
     vector<pair<const char *, int>> scores;
-    bool hasBr = true;
-    basic_rule_t br; // specific rule stuff
+    basic_rule_t *br; // specific rule stuff
 } http_rule_t;
 
 class RuleParser {
@@ -221,13 +220,13 @@ private:
 
 public:
     unordered_map<string, check_rule_t> checkRules;
-    vector<http_rule_t> getRules;
-    vector<http_rule_t> bodyRules;
-    vector<http_rule_t> headerRules;
-    vector<http_rule_t> genericRules; // URL
+    vector<http_rule_t*> getRules;
+    vector<http_rule_t*> bodyRules;
+    vector<http_rule_t*> headerRules;
+    vector<http_rule_t*> genericRules; // URL
 
-    vector<whitelist_rule_t> tmp_wlr; // raw array of transformed whitelists
-    vector<http_rule_t> rxmz_wlr; // raw array of regex-mz whitelists
+    vector<whitelist_rule_t> tmpWlr; // raw array of transformed whitelists
+    vector<http_rule_t> rxmzWlr; // raw array of regex-mz whitelists
 
     unordered_map<string, whitelist_rule_t> wlUrlHash; // hash table of whitelisted URL rules
     unordered_map<string, whitelist_rule_t> wlArgsHash; // hash table of whitelisted ARGS rules

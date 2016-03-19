@@ -12,6 +12,20 @@
 #include "RuleParser.h"
 #include "mod_defender.hpp"
 
+//#define DEBUG_RUNTIME_PROCESSRULE
+#ifdef DEBUG_RUNTIME_PROCESSRULE
+#define DEBUG_RUNTIME_PR(x) do { std::cerr << x; } while (0)
+#else
+#define DEBUG_RUNTIME_PR(x)
+#endif
+
+//#define DEBUG_RUNTIME_BASESTR_RULE_SET
+#ifdef DEBUG_RUNTIME_BASESTR_RULE_SET
+#define DEBUG_RUNTIME_BRS(x) do { std::cerr << x; } while (0)
+#else
+#define DEBUG_RUNTIME_BRS(x)
+#endif
+
 using std::chrono::system_clock;
 using std::pair;
 using std::vector;
@@ -52,7 +66,7 @@ public:
     void applyCheckRuleAction(const rule_action_t &action);
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
-                        const vector<http_rule_t> &rules);
+                        const vector<http_rule_t*> &rules);
     int processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch);
     void applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
                         MATCH_ZONE zone, bool targetName);
