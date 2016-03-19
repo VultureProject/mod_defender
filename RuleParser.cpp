@@ -29,20 +29,18 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
             i++;
         }
         pair<string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
-        rule.br.rxMz = (matchPatern.first == "rx");
-        DEBUG_CONF_MR((rule.br.rxMz ? "rx " : "str "));
         if (matchPatern.first == "rx") {
             try {
-                rule.br.matchPaternRx = regex(matchPatern.second);
+                rule.br.rx = regex(matchPatern.second);
             } catch (std::regex_error &e) {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                 error = true;
             }
-            DEBUG_CONF_MR(matchPatern.second << " ");
+            DEBUG_CONF_MR("rx " << matchPatern.second << " ");
         }
         if (matchPatern.first == "str") {
-            rule.br.matchPaternStr = apr_pstrdup(p, matchPatern.second.c_str());
-            DEBUG_CONF_MR(rule.br.matchPaternStr << " ");
+            rule.br.str = apr_pstrdup(p, matchPatern.second.c_str());
+            DEBUG_CONF_MR("str " << rule.br.str << " ");
         }
 
         rule.logMsg = apr_pstrdup(p, ((const char **) rulesArray->elts)[i + 1] + 4);
@@ -292,7 +290,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
 
             if (!rule.br.rxMz) {
                 customRule.target = apr_pstrdup(p, cmz.second.c_str());
-                DEBUG_CONF_MZ("(rx)" << cmz.second << " ");
+                DEBUG_CONF_MZ("(str)" << cmz.second << " ");
             }
             else {
                 try {
@@ -301,7 +299,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                     continue;
                 }
-                DEBUG_CONF_MZ("(str)" << cmz.second << " ");
+                DEBUG_CONF_MZ("(rx)" << cmz.second << " ");
             }
             rule.br.customLocations.push_back(customRule);
         }
@@ -674,7 +672,6 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name
         bool violation = false;
         for (const custom_rule_location_t& custloc : rxMwRule.br.customLocations) {
             if (custloc.bodyVar) {
-//                long match = distance(sregex_iterator(name.begin(), name.end(), custloc.targetRx), sregex_iterator());
                 bool match = regex_match(name, custloc.targetRx);
                 if (!match) {
                     violation = true;

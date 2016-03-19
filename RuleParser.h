@@ -12,7 +12,7 @@
 #include <regex>
 #include <unordered_map>
 
-//#define DEBUG_CONFIG_MAINRULE
+#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
 #define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
@@ -33,7 +33,7 @@
 #define DEBUG_CONF_BR(x)
 #endif
 
-//#define DEBUG_CONFIG_MATCHZONE
+#define DEBUG_CONFIG_MATCHZONE
 #ifdef DEBUG_CONFIG_MATCHZONE
 #define DEBUG_CONF_MZ(x) do { std::cerr << x; } while (0)
 #else
@@ -165,10 +165,9 @@ typedef struct {
 } whitelist_rule_t;
 
 typedef struct {
+    regex rx;
+    const char *str = NULL;
     bool rxMz = false;
-    regex matchPaternRx;
-    bool negative = false;
-    const char *matchPaternStr = NULL;
     enum MATCH_ZONE zone;
     bool bodyMz = false;
     bool bodyVarMz = false;
@@ -181,6 +180,7 @@ typedef struct {
     bool fileExtMz = false;
     bool customLocation = false; // set if defined "custom" match zone (GET_VAR/POST_VAR/...)
     bool targetName = false; // does the rule targets variable name instead ?
+    bool negative = false;
     vector<custom_rule_location_t> customLocations;
 } basic_rule_t;
 
@@ -194,24 +194,11 @@ typedef struct {
     enum RULE_TYPE type; // type of the rule
     bool whitelist = false; // simply put a flag if it's a wlr, wl_id array will be used to store the whitelisted IDs
     vector<int> wlIds;
-
     /* "common" data for all rules */
     int id;
     const char *logMsg = NULL; // a specific log message
-//    int score; //also handles DENY and ALLOW
-
     /* List of scores increased on rule match. */
     vector<pair<const char *, int>> scores;
-//    bool sc_block = false; //
-//    bool sc_allow = false; //
-    // end of specific score tag stuff
-
-    /* CheckRule */
-//    bool block = false;
-//    bool allow = false;
-//    bool drop = false;
-//    bool log = false;
-
     bool hasBr = true;
     basic_rule_t br; // specific rule stuff
 } http_rule_t;
