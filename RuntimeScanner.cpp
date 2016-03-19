@@ -4,6 +4,7 @@
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
 #include "mod_defender.hpp"
+#include "RuleParser.h"
 
 RuntimeScanner::RuntimeScanner(request_rec* rec, server_config_t* scfg, RuleParser& parser) : parser(parser) {
     r = rec;
@@ -61,14 +62,14 @@ int RuntimeScanner::storeTable(void *pVoid, const char *key, const char *value) 
     return 1; // Zero would stop iterating; any other return value continues
 }
 
-string RuntimeScanner::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const string& varName) {
+string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string& name, const string& value, bool targetName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
 
-    ss << "zone" << rulesMatchedCount << "=" << dummy_match_zones[zone] << "&";
+    ss << "zone" << rulesMatchedCount << "=" << match_zones[zone] << "&";
     ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
-    ss << "var_name" << rulesMatchedCount << "=" << varName;
+    ss << "var_name" << rulesMatchedCount << "=" << name;
 
     cerr << Util::formatLog(DEFLOG_ERROR, r->useragent_ip);
     cerr << KRED "⚠ Rule #" << rule.id << " ";
@@ -76,8 +77,10 @@ string RuntimeScanner::formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZON
         cerr << "(" << rule.br.matchPaternStr << ") ";
     else
         cerr << "(<regex>) ";
-    cerr << "matched at ";
-    cerr << dummy_match_zones[zone] << ":" << varName << KNRM << endl;
+    cerr << "matched " << nbMatch << " times ";
+    if (targetName)
+        cerr << "in name ";
+    cerr << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
 
     return ss.str();
 }
@@ -93,11 +96,19 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t& action) {
         log = true;
 }
 
-void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int matchCount) {
+void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const string& name, const string& value, enum MATCH_ZONE zone, bool targetName) {
+    if (parser.isRuleWhitelisted(uri, rule, name, zone, targetName)) {
+        cerr << Util::formatLog(DEFLOG_WARN, r->useragent_ip);
+        cerr << KGRN "✓ Rule #" << rule.id << " whitelisted" KNRM << endl;
+        return;
+    }
+    // rule negative case
+    if (nbMatch == 0)
+        nbMatch = 1;
     for (const pair<const char*, int> &tagScore : rule.scores) {
         bool matched = false;
         int& score = matchScores[tagScore.first];
-        score += tagScore.second * matchCount;
+        score += tagScore.second * nbMatch;
         check_rule_t& checkRule = parser.checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL)
             matched = (score >= checkRule.limit);
@@ -110,109 +121,107 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int matchCount) {
         if (matched)
             applyCheckRuleAction(checkRule.action);
     }
+
+    if (scfg->learning)
+        matchVars << formatMatch(rule, nbMatch, zone, name, value, targetName);
+    rulesMatchedCount++;
 }
 
-bool RuntimeScanner::isRuleEligible(enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string& varName) {
-    bool eligible = false;
-    eligible = ((zone == HEADERS && rule.br.headersMz) || (zone == URL && rule.br.specificUrlMz) ||
-                (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz));
+int RuntimeScanner::processRuleBuffer(const string& str, const http_rule_t& rl, int& nbMatch) {
+    if (!rl.hasBr)
+        return -1;
+    nbMatch = 0;
+    if (rl.br.rxMz) {
+        nbMatch = (int) distance(sregex_iterator(str.begin(), str.end(), rl.br.matchPaternRx), sregex_iterator());
+        if (nbMatch > 0) {
+            if (rl.br.negative)
+                return 0;
+            else
+                return 1;
+        }
+        else if (nbMatch == 0) {
+            if (rl.br.negative)
+                return 1;
+            else
+                return 0;
+        }
+        return -1;
+    }
+    else if (rl.br.matchPaternStr) {
+        nbMatch = Util::countSubstring(str, rl.br.matchPaternStr);
+        if (nbMatch > 0) {
+            if (rl.br.negative)
+                return 0;
+            else
+                return 1;
+        }
+        else {
+            if (rl.br.negative)
+                return 1;
+            else
+                return 0;
+        }
+    }
+    return 0;
+}
 
-    if (!eligible) {
-        if (rule.br.customLocation) {
-            if (zone == HEADERS && rule.br.headersVarMz) {
-                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
-                    if (rule.br.rxMz)
-                        eligible = regex_match(varName, custloc.targetRx);
-                    else
-                        eligible = (varName == custloc.target);
+void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, const string &value,
+                                    const vector<http_rule_t> &rules) {
+    if (scfg->libinjection)
+        checkLibInjection(zone, name, value);
+
+    int nbMatch = 0;
+    for (int i = 0; i < rules.size() && ((!block || scfg->learning) && !drop); i++) {
+        const http_rule_t& rule = rules[i];
+        /* does the rule have a custom location ? custom location means checking only on a specific argument */
+        if (name.size() > 0 && rule.br.customLocation) {
+            /* for each custom location */
+            for (const custom_rule_location_t &custloc : rule.br.customLocations) {
+                /* if the name are the same, check */
+                if (custloc.target && name == custloc.target) {
+                    /* match rule against var content, */
+                    if (processRuleBuffer(value, rule, nbMatch)) {
+                        applyCheckRule(rule, nbMatch, name, value, zone, false);
+                    }
+
+                    if (!rule.br.negative) {
+                        /* match rule against var name, */
+                        if (processRuleBuffer(name, rule, nbMatch)) {
+                            /* if our rule matched, apply effects (score etc.) */
+                            applyCheckRule(rule, nbMatch, name, value, zone, true);
+                        }
+                    }
                 }
             }
-            else if (zone == URL && rule.br.specificUrlMz) {
-                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
-                    if (rule.br.rxMz)
-                        eligible = regex_match(varName, custloc.targetRx);
-                    else
-                        eligible = (varName == custloc.target);
-                }
+        }
+
+        /*
+        ** check against the rule if the current zone is matching
+        ** the zone the rule is meant to be check against
+        */
+        if ((zone == HEADERS && rule.br.headersMz) || (zone == URL && rule.br.specificUrlMz) ||
+             (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz) ||
+                    (zone == FILE_EXT && rule.br.fileExtMz)) {
+            /* check the rule against the value*/
+            if (processRuleBuffer(value, rule, nbMatch)) {
+                /* if our rule matched, apply effects (score etc.) */
+                applyCheckRule(rule, nbMatch, name, value, zone, false);
             }
-            else if (zone == ARGS && rule.br.argsVarMz) {
-                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
-                    if (rule.br.rxMz)
-                        eligible = regex_match(varName, custloc.targetRx);
-                    else
-                        eligible = (varName == custloc.target);
-                }
-            }
-            else if (zone == BODY && rule.br.bodyVarMz) {
-                for (const custom_rule_location_t &custloc : rule.br.customLocations) {
-                    if (rule.br.rxMz)
-                        eligible = regex_match(varName, custloc.targetRx);
-                    else
-                        eligible = (varName == custloc.target);
+
+            if (!rule.br.negative) {
+                /* check the rule against the name */
+                if (processRuleBuffer(name, rule, nbMatch)) {
+                    /* if our rule matched, apply effects (score etc.) */
+                    applyCheckRule(rule, nbMatch, name, value, zone, true);
                 }
             }
         }
     }
 
-    return eligible;
+
 }
 
-/*
- * MainRules check
- */
-void RuntimeScanner::checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule) {
-//    cerr << "→ Checking " << varName << "=" << value << " in " << dummy_match_zones[zone] << " with rule #" << rule.id << " ";
-//    if (!rule.br.rxMz)
-//        cerr << "pattern: " << rule.br.matchPaternStr << endl;
-//    else
-//        cerr << "<regex>" << endl;
-
-    if (!isRuleEligible(zone, rule, varName)) {
-//        cerr << "Rule #" << rule.id << not eligible" << endl;
-        return;
-    }
-
-    if (parser.isRuleWhitelisted(uri, rule, varName, zone, rule.br.targetName)) {
-        cerr << KGRN "✓ Rule #" << rule.id << " whitelisted" KNRM << endl;
-        return;
-    }
-
-    int tmpMatchCount = 0;
-    if (rule.br.rxMz) {
-        tmpMatchCount += distance(sregex_iterator(value.begin(), value.end(), rule.br.matchPaternRx), sregex_iterator());
-    }
-    else {
-        tmpMatchCount += Util::countSubstring(value, rule.br.matchPaternStr);
-    }
-
-    /* If rule negative */
-    int matchCount = 0;
-    if (!rule.br.negative)
-        matchCount += tmpMatchCount;
-    if (rule.br.negative && tmpMatchCount == 0)
-        matchCount++;
-
-    if (matchCount > 0) {
-        matchVars << formatMatch(rule, zone, varName);
-        applyCheckRule(rule, matchCount);
-        rulesMatchedCount++;
-    }
-}
-
-void RuntimeScanner::checkRulesOnVars(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v,
-                                    const http_rule_t &rule) {
-    for (const pair<const string, const string>& pair : v) {
-        checkVar(zone, pair.first, pair.second, rule);
-    }
-}
-
-void RuntimeScanner::checkLibInjectionOnVar(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v) {
-    for (const pair<const string, const string>& pair : v) {
-        checkLibInjection(zone, pair.first, pair.second);
-    }
-}
-
-void RuntimeScanner::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value) {
+void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string& name, const string& value) {
     const char* valuecstr = apr_pstrdup(pool, value.c_str());
     size_t slen = strlen(value.c_str());
 
@@ -223,18 +232,14 @@ void RuntimeScanner::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string&
         if (libinjection_is_sqli(&state)) {
             http_rule_t& libsqlirule = parser.internalRules[17];
             libsqlirule.br.matchPaternStr = state.fingerprint;
-            matchVars << formatMatch(libsqlirule, zone, varName);
-            applyCheckRule(libsqlirule, 1);
-            rulesMatchedCount++;
+            applyCheckRule(libsqlirule, 1, name, value, zone, false);
         }
     }
 
     if (scfg->libinjection_xss) {
         if (libinjection_xss(valuecstr, slen)) {
             http_rule_t& libxssrule = parser.internalRules[18];
-            matchVars << formatMatch(libxssrule, zone, varName);
-            applyCheckRule(libxssrule, 1);
-            rulesMatchedCount++;
+            applyCheckRule(libxssrule, 1, name, value, zone, false);
         }
     }
 }
@@ -242,31 +247,20 @@ void RuntimeScanner::checkLibInjection(enum DUMMY_MATCH_ZONE zone, const string&
 int RuntimeScanner::runHandler() {
     int returnVal = DECLINED;
 
-    for (const http_rule_t &rule : parser.getRules) {
-        checkRulesOnVars(ARGS, args, rule);
+    for (const pair<const string, const string>& pair : headers) {
+        basestrRuleset(HEADERS, pair.first, pair.second, parser.headerRules);
     }
-    if (scfg->libinjection)
-        checkLibInjectionOnVar(ARGS, args);
-    if ((strcmp(r->method, "POST") == 0 || strcmp(r->method, "PUT") == 0)) {
-        for (const http_rule_t &rule : parser.bodyRules) {
-            checkRulesOnVars(BODY, body, rule);
+    for (const pair<const string, const string>& pair : args) {
+        basestrRuleset(ARGS, pair.first, pair.second, parser.getRules);
+    }
+    if (r->method_number == M_POST || r->method_number == M_PUT) {
+        for (const pair<const string, const string> &pair : body) {
+            basestrRuleset(BODY, pair.first, pair.second, parser.bodyRules);
         }
-        if (scfg->libinjection)
-            checkLibInjectionOnVar(BODY, body);
     }
-    for (const http_rule_t &rule : parser.headerRules) {
-        checkRulesOnVars(HEADERS, headers, rule);
-    }
-    if (scfg->libinjection)
-        checkLibInjectionOnVar(HEADERS, headers);
-    string empty = "";
-    for (const http_rule_t &rule : parser.genericRules) {
-        checkVar(URL, empty, uri, rule);
-    }
-    if (scfg->libinjection)
-        checkLibInjection(URL, empty, uri);
+    basestrRuleset(URL, string(), uri, parser.genericRules);
 
-    if (rulesMatchedCount > 0) {
+    if (scfg->learning && rulesMatchedCount > 0) {
         std::time_t tt = system_clock::to_time_t (system_clock::now());
         std::tm * ptm = std::localtime(&tt);
         stringstream errlog;
@@ -302,12 +296,10 @@ int RuntimeScanner::runHandler() {
         const char* cstr = tmp.c_str();
         apr_size_t cstrlen = strlen(cstr);
         apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
-
-        if (block)
-            returnVal = HTTP_FORBIDDEN;
     }
 
-    cerr << flush;
+    if (block)
+        returnVal = HTTP_FORBIDDEN;
 
     return returnVal;
 }

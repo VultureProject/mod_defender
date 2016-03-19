@@ -175,6 +175,13 @@ const char *set_libinjection_xss_flag(cmd_parms *cmd, void *_scfg, const char *a
     return NULL;
 }
 
+const char *set_learning_flag(cmd_parms *cmd, void *_scfg, const char *arg) {
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+    if (strcmp(arg, "1") == 0)
+        scfg->learning = true;
+    return NULL;
+}
+
 const char *set_mainrules(cmd_parms *cmd, void *sconf_, const char *arg) {
     *(const char **) apr_array_push(tmpMainRulesArray) = apr_pstrdup(tmpMainRulesArray->pool, arg);
     return NULL;
@@ -191,9 +198,6 @@ const char *set_basicrules(cmd_parms *cmd, void *sconf_, const char *arg) {
     return NULL;
 }
 
-// Dummy function
-const char *skip_directive() { return NULL; }
-
 /**
  * A declaration of the configuration directives that are supported by this module.
  */
@@ -202,7 +206,7 @@ const command_rec directives[] = {
         {"CheckRule",    (cmd_func) set_checkrules, NULL, RSRC_CONF, ITERATE2, "Score directive"},
         {"BasicRule",    (cmd_func) set_basicrules, NULL, RSRC_CONF, ITERATE,  "Whitelist directive"},
         {"MatchLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the match log"},
-        {"LearningMode", (cmd_func) skip_directive,     NULL, RSRC_CONF, TAKE1,    ""},
+        {"LearningMode", (cmd_func) set_learning_flag,     NULL, RSRC_CONF, TAKE1,    ""},
         {"LibinjectionSQL", (cmd_func) set_libinjection_sql_flag,     NULL, RSRC_CONF, TAKE1,    "Libinjection SQL toggle"},
         {"LibinjectionXSS", (cmd_func) set_libinjection_xss_flag,     NULL, RSRC_CONF, TAKE1,    "Libinjection XSS toggle"},
         {NULL}

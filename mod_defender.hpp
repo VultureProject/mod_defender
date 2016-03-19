@@ -43,6 +43,7 @@ typedef struct {
     bool libinjection_sql = false;
     bool libinjection_xss = false;
     bool libinjection = false;
+    bool learning = true;
 } server_config_t;
 
 #endif /* MOD_DEFENDER_HPP */

@@ -19,7 +19,6 @@ using std::string;
 using std::cerr;
 using std::stringstream;
 using std::endl;
-using std::flush;
 using std::regex;
 using std::sregex_iterator;
 using std::regex_match;
@@ -50,15 +49,15 @@ public:
     static int storeTable(void*, const char*, const char*);
     void readPost();
     int runHandler();
-    string formatMatch(const http_rule_t &rule, enum DUMMY_MATCH_ZONE zone, const string& varName);
-    void applyCheckRule(const http_rule_t &rule, int matchCount);
-    void checkRulesOnVars(enum DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v,
-                          const http_rule_t &rule);
-    void checkVar(enum DUMMY_MATCH_ZONE zone, const string& varName, const string& value, const http_rule_t &rule);
     void applyCheckRuleAction(const rule_action_t &action);
-    bool isRuleEligible(DUMMY_MATCH_ZONE zone, const http_rule_t &rule, const string &varName);
-    void checkLibInjection(DUMMY_MATCH_ZONE zone, const string &varName, const string &value);
-    void checkLibInjectionOnVar(DUMMY_MATCH_ZONE zone, vector<pair<const string, const string>> &v);
+    void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
+    void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
+                        const vector<http_rule_t> &rules);
+    int processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch);
+    void applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
+                        MATCH_ZONE zone, bool targetName);
+    string formatMatch(const http_rule_t &rule, int nbMatch, MATCH_ZONE zone, const string &name, const string &value,
+                       bool targetName);
 };
 
 #endif /* RUNTIMESCANNER_HPP */

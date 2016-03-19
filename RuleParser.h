@@ -60,7 +60,6 @@ using std::string;
 using std::cerr;
 using std::stringstream;
 using std::endl;
-using std::flush;
 using std::istream_iterator;
 using std::istringstream;
 using std::regex;
@@ -98,7 +97,7 @@ typedef struct {
     bool headersVar = false; // match in [name] var of headers
     bool argsVar = false; // match in [name] var of args
     bool specificUrl = false; // match on URL [name]
-    const char *target; // to be used for string match zones
+    const char *target = NULL; // to be used for string match zones
     regex targetRx; // to be used for regexed match zones
 } custom_rule_location_t;
 
@@ -123,7 +122,7 @@ typedef struct {
     bool fileExt = false; // match on file upload extension
     /* set if defined "custom" match zone (GET_VAR/POST_VAR/...)  */
     vector<int> wlIds;
-    const char *target;
+    const char *target = NULL;
 } whitelist_location_t;
 
 enum MATCH_TYPE {
@@ -132,7 +131,7 @@ enum MATCH_TYPE {
     MIXED
 };
 
-enum DUMMY_MATCH_ZONE {
+enum MATCH_ZONE {
     HEADERS = 0,
     URL,
     ARGS,
@@ -141,7 +140,7 @@ enum DUMMY_MATCH_ZONE {
     UNKNOWN
 };
 
-static const char *dummy_match_zones[] = {
+static const char *match_zones[] = {
         "HEADERS",
         "URL",
         "ARGS",
@@ -158,7 +157,7 @@ static const char *dummy_match_zones[] = {
 */
 typedef struct {
     vector<whitelist_location_t> whitelistLocations;
-    enum DUMMY_MATCH_ZONE zone; // zone to wich the WL applies
+    enum MATCH_ZONE zone; // zone to wich the WL applies
     bool uriOnly = false; // if the "name" is only an url, specify it
     bool targetName = false; // does the rule targets the name instead of the content
     string name; // hash key [#]URI#VARNAME
@@ -169,8 +168,8 @@ typedef struct {
     bool rxMz = false;
     regex matchPaternRx;
     bool negative = false;
-    const char *matchPaternStr;
-    enum DUMMY_MATCH_ZONE zone;
+    const char *matchPaternStr = NULL;
+    enum MATCH_ZONE zone;
     bool bodyMz = false;
     bool bodyVarMz = false;
     bool headersMz = false;
@@ -198,7 +197,7 @@ typedef struct {
 
     /* "common" data for all rules */
     int id;
-    const char *logMsg; // a specific log message
+    const char *logMsg = NULL; // a specific log message
 //    int score; //also handles DENY and ALLOW
 
     /* List of scores increased on rule match. */
@@ -221,8 +220,8 @@ class RuleParser {
 private:
     apr_pool_t *p;
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
-    bool isRuleWhitelistedRx(const http_rule_t &rule, const string &name, DUMMY_MATCH_ZONE zone, bool targetName);
-    bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
+    bool isRuleWhitelistedRx(const http_rule_t &rule, const string &name, MATCH_ZONE zone, bool targetName);
+    bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
     string parseCode(std::regex_constants::error_type etype);
 
@@ -249,11 +248,11 @@ public:
     void parseBasicRules(apr_array_header_t *rulesArray);
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     void generateHashTables();
-    void wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
-    void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx);
+    void wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx);
+    void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     bool checkIds(int matchId, const vector<int> &wlIds);
-    bool findWlInHash(whitelist_rule_t &wlRule, const string &key, DUMMY_MATCH_ZONE zone);
-    bool isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, DUMMY_MATCH_ZONE zone, bool targetName);
+    bool findWlInHash(whitelist_rule_t &wlRule, const string &key, MATCH_ZONE zone);
+    bool isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, MATCH_ZONE zone, bool targetName);
 };
 
 

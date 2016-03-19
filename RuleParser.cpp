@@ -310,7 +310,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
 
 /* check rule, returns associed zone, as well as location index.
   location index refers to $URL:bla or $ARGS_VAR:bla */
-void RuleParser::wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
+void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
     if (curr.br.bodyMz || curr.br.bodyVarMz)
         zone = BODY;
     else if (curr.br.headersMz || curr.br.bodyVarMz)
@@ -342,7 +342,7 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, enum DUMMY_MATCH_ZONE &zon
     }
 }
 
-void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum DUMMY_MATCH_ZONE &zone, int &uri_idx,
+void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum MATCH_ZONE &zone, int &uri_idx,
                        int &name_idx) {
     string fullname = "";
     if (curr.br.targetName) // if WL targets variable name instead of content, prefix hash with '#'
@@ -396,7 +396,7 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
 void RuleParser::generateHashTables() {
     for (http_rule_t &curr_r : whitelistRules) {
         int uri_idx = -1, name_idx = -1;
-        enum DUMMY_MATCH_ZONE zone = UNKNOWN;
+        enum MATCH_ZONE zone = UNKNOWN;
 
         if (curr_r.br.customLocations.size() == 0) {
             disabled_rules.push_back(curr_r);
@@ -470,7 +470,7 @@ bool RuleParser::checkIds(int matchId, const vector<int> &wlIds) {
     return negative;
 }
 
-bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum DUMMY_MATCH_ZONE zone, const http_rule_t &rule,
+bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum MATCH_ZONE zone, const http_rule_t &rule,
                                   enum MATCH_TYPE type, bool targetName) {
     if (zone == FILE_EXT)
         zone = BODY; // FILE_EXT zone is just a hack, as it indeed targets BODY
@@ -516,7 +516,7 @@ bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name
 }
 
 // name is hashkey
-bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone,
+bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum MATCH_ZONE zone,
                                     bool targetName) {
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
@@ -645,7 +645,7 @@ bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, c
     return false;
 }
 
-bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, enum DUMMY_MATCH_ZONE zone, bool targetName) {
+bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, enum MATCH_ZONE zone, bool targetName) {
     /* Look it up in regexed whitelists for matchzones */
     if (rxmz_wlr.size() > 0)
         return false;
@@ -711,7 +711,7 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name
     }
 }
 
-bool RuleParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum DUMMY_MATCH_ZONE zone) {
+bool RuleParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum MATCH_ZONE zone) {
     string keyLowered = string(key);
     std::transform(keyLowered.begin(), keyLowered.end(), keyLowered.begin(), ::tolower);
 
