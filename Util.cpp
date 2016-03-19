@@ -39,16 +39,6 @@ pair<string, string> Util::splitAtFirst(const string &s, string delim) {
     return p;
 }
 
-int Util::countSubstring(const std::string &str, const std::string &sub) {
-    if (sub.length() == 0) return 0;
-    int count = 0;
-    for (size_t offset = str.find(sub); offset != std::string::npos;
-         offset = str.find(sub, offset + sub.length())) {
-        ++count;
-    }
-    return count;
-}
-
 string Util::apacheTimeFmt() {
     stringstream ss;
     high_resolution_clock::time_point p = high_resolution_clock::now();

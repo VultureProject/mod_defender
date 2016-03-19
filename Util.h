@@ -64,7 +64,15 @@ public:
     static vector<string> split(string &s, char delim);
     static pair<string, string> splitAtFirst(const string &s, string delim);
     static vector<int> splitToInt(string &s, char delimiter);
-    static int countSubstring(const string &str, const string &sub);
+    static int countSubstring(const string &str, const string &sub) {
+        if (sub.length() == 0) return 0;
+        int count = 0;
+        for (size_t offset = str.find(sub); offset != std::string::npos;
+             offset = str.find(sub, offset + sub.length())) {
+            ++count;
+        }
+        return count;
+    }
     static string apacheTimeFmt();
     static string formatLog(DEF_LOGLEVEL loglevel, char *client);
 };
