@@ -21,6 +21,7 @@ RuntimeScanner::RuntimeScanner(request_rec* rec, server_config_t* scfg, RulePars
     readPost(); // Store body form data
 
     uri = string(r->parsed_uri.path);
+    std::transform(uri.begin(), uri.end(), uri.begin(), ::tolower);
 }
 
 /*
