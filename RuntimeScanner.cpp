@@ -189,6 +189,12 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
             DEBUG_RUNTIME_BRS("loc ");
             /* for each custom location */
             for (const custom_rule_location_t &loc : rule.br->customLocations) {
+                /* check if the custom location zone match with the current zone (additional feature) */
+                if (!((loc.bodyVar && zone == BODY) || (loc.argsVar && zone == ARGS) ||
+                        (loc.headersVar && zone == HEADERS) || (loc.specificUrl && zone == URL))) {
+                    DEBUG_RUNTIME_BRS("Custom location zone mismatch ");
+                    continue;
+                }
                 /* if the name are the same, check */
                 if (!loc.target.empty() && name == loc.target) {
                     DEBUG_RUNTIME_BRS(loc.target << " ");

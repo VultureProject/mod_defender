@@ -33,7 +33,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	```sh
     $ cat <<EOT | sudo tee /etc/apache2/mods-available/defender.conf > /dev/null
     <IfModule defender_module>
-        IncludeOptional /etc/moddefender/*.conf
+        Include /etc/moddefender/*.conf
     </IfModule>
     EOT
     ```

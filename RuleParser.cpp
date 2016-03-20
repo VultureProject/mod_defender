@@ -34,7 +34,7 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
             try {
                 rule->br->rx = new regex(matchPatern.second, std::regex::optimize);
             } catch (std::regex_error &e) {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPatern.second.c_str(), parseCode(e.code()).c_str());
                 error = true;
             }
             DEBUG_CONF_MR("rx " << matchPatern.second << " ");
@@ -62,7 +62,12 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
         DEBUG_CONF_MR(rule->id << " ");
 
         if (!error) {
-            if (rule->br->headersMz) {
+            /*
+             * Naxsi has a bug that adds rules twice if there is multiple custom locations
+             * "issue: Multiple *_VAR lead to multiple matching"
+             * Handled here (additional feature)
+             */
+            if (rule->br->headersMz || rule->br->headersVarMz) { // push in headers rules
                 headerRules.push_back(rule);
                 DEBUG_CONF_MR("[header] ");
             }
@@ -70,31 +75,13 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
                 bodyRules.push_back(rule);
                 DEBUG_CONF_MR("[body] ");
             }
-            if (rule->br->urlMz) { // push in generic rules, as it's matching the URI
+            if (rule->br->urlMz || rule->br->specificUrlMz) { // push in generic rules, as it's matching the URI
                 genericRules.push_back(rule);
                 DEBUG_CONF_MR("[generic] ");
             }
             if (rule->br->argsMz || rule->br->argsVarMz) { // push in GET arg rules, but we should push in POST rules too
                 getRules.push_back(rule);
                 DEBUG_CONF_MR("[get] ");
-            }
-            /* push in custom locations. It's a rule matching a VAR_NAME or an EXACT_URI :
-                - GET_VAR, POST_VAR, URI */
-            if (rule->br->customLocation) {
-                for (const custom_rule_location_t &loc : rule->br->customLocations) {
-                    if (loc.argsVar) {
-                        getRules.push_back(rule);
-                        DEBUG_CONF_MR("[get] ");
-                    }
-                    if (loc.bodyVar) {
-                        bodyRules.push_back(rule);
-                        DEBUG_CONF_MR("[body] ");
-                    }
-                    if (loc.headersVar) {
-                        headerRules.push_back(rule);
-                        DEBUG_CONF_MR("[header] ");
-                    }
-                }
             }
         }
 
@@ -439,7 +426,7 @@ void RuleParser::generateHashTables() {
             /*
              * Naxsi converts custom location string target to regex target here,
              * because it does not handle whitelist that mix _X elements with _VAR or $URL items.
-             * Not necessary ! Mod Defender supports it ;)
+             * Not necessary ! Mod Defender supports it ;) (additional feature)
              */
 
             rxMzWlr.push_back(curr_r);
