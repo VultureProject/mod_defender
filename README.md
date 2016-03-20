@@ -49,24 +49,21 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
 	```
     ```sh
-	$ cat <<EOT | sudo tee /etc/moddefender/checkrules.conf > /dev/null
-    CheckRule "\$SQL >= 8" BLOCK;
-    CheckRule "\$RFI >= 8" BLOCK;
-    CheckRule "\$TRAVERSAL >= 4" BLOCK;
-    CheckRule "\$EVADE >= 4" BLOCK;
-    CheckRule "\$XSS >= 8" BLOCK;
-    EOT
-    ```
-    ```sh
     $ cat <<EOT | sudo tee /etc/moddefender/moddefender.conf > /dev/null
     # Match log path
     MatchLog \${APACHE_LOG_DIR}/moddef_match.log
-    #Learning mode toggle
-    LearningMode 1
-    #Libinjection SQL toggle
-    LibinjectionSQL 1
-    #Libinjection XSS toggle
-    LibinjectionXSS 1
+    # Learning mode toggle
+    LearningMode On
+    # Libinjection SQL toggle
+    LibinjectionSQL Off
+    # Libinjection XSS toggle
+    LibinjectionXSS Off
+    ## Score action
+    CheckRule "\$SQL >= 8" BLOCK
+    CheckRule "\$RFI >= 8" BLOCK
+    CheckRule "\$TRAVERSAL >= 4" BLOCK
+    CheckRule "\$EVADE >= 4" BLOCK
+    CheckRule "\$XSS >= 8" BLOCK
     EOT
     ```
 

@@ -67,7 +67,7 @@ public:
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
                         const vector<http_rule_t*> &rules);
-    int processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch);
+    bool processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch);
     void applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
                         MATCH_ZONE zone, bool targetName);
     string formatMatch(const http_rule_t &rule, int nbMatch, MATCH_ZONE zone, const string &name, const string &value,

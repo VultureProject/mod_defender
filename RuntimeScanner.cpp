@@ -107,7 +107,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
     // rule negative case
     if (nbMatch == 0)
         nbMatch = 1;
-    for (const pair<const char*, int> &tagScore : rule.scores) {
+    for (const pair<string, int> &tagScore : rule.scores) {
         bool matched = false;
         int& score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
@@ -129,11 +129,9 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
     rulesMatchedCount++;
 }
 
-int RuntimeScanner::processRuleBuffer(const string& str, const http_rule_t& rl, int& nbMatch) {
-    if (!rl.br)
-        return -1;
-    if (str.empty())
-        return 0;
+bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch) {
+    if (!rl.br || str.empty())
+        return false;
     DEBUG_RUNTIME_PR("[" << str);
     nbMatch = 0;
     if (rl.br->rx) {
@@ -141,37 +139,24 @@ int RuntimeScanner::processRuleBuffer(const string& str, const http_rule_t& rl, 
         nbMatch = (int) distance(sregex_iterator(str.begin(), str.end(), *rl.br->rx), sregex_iterator());
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
-            if (rl.br->negative)
-                return 0;
-            else
-                return 1;
+            return !rl.br->negative;
         }
-        else if (nbMatch == 0) {
-            if (rl.br->negative)
-                return 1;
-            else
-                return 0;
+        else {
+            return rl.br->negative;
         }
-        return -1;
     }
     else if (!rl.br->str.empty()) {
         DEBUG_RUNTIME_PR(" ? " << rl.br->str << "] ");
         nbMatch = Util::countSubstring(str, rl.br->str);
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
-            if (rl.br->negative)
-                return 0;
-            else
-                return 1;
+            return !rl.br->negative;
         }
         else {
-            if (rl.br->negative)
-                return 1;
-            else
-                return 0;
+            return rl.br->negative;
         }
     }
-    return 0;
+    return false;
 }
 
 void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, const string &value,
@@ -189,7 +174,7 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
             DEBUG_RUNTIME_BRS("loc ");
             /* for each custom location */
             for (const custom_rule_location_t &loc : rule.br->customLocations) {
-                /* check if the custom location zone match with the current zone (additional feature) */
+                /* check if the custom location zone match with the current zone (enhancement) */
                 if (!((loc.bodyVar && zone == BODY) || (loc.argsVar && zone == ARGS) ||
                         (loc.headersVar && zone == HEADERS) || (loc.specificUrl && zone == URL))) {
                     DEBUG_RUNTIME_BRS("Custom location zone mismatch ");

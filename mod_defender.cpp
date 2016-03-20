@@ -6,23 +6,15 @@ extern module AP_MODULE_DECLARE_DATA defender_module;
 
 RuleParser* parser = nullptr;
 
-apr_array_header_t *tmpMainRulesArray;
-apr_array_header_t *tmpCheckRulesArray;
-apr_array_header_t *tmpBasicRulesArray;
+vector<string> *tmpMainRules;
+vector<string> *tmpCheckRules;
+vector<string> *tmpBasicRules;
 
 /* Custom function to ensure our RuntimeScanner get's deleted at the
    end of the request cycle. */
 apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     if (inPtr)
         delete (RuntimeScanner *) inPtr;
-    return OK;
-}
-
-apr_status_t defender_delete_ruleparser_object(void *inPtr) {
-    if (inPtr) {
-        cerr <<  "mod_defender: " << KYEL "deleting parser..." KNRM << endl;
-        delete (RuleParser *) inPtr;
-    }
     return OK;
 }
 
@@ -34,27 +26,20 @@ int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_r
         apr_pool_userdata_set((const void *)1, "moddefender-init-flag", apr_pool_cleanup_null, s->process->pool);
     }
     else {
-//        for (int i = 0; i < tmpMainRulesArray->nelts; i++) {
-//            const char *s = ((const char **) tmpMainRulesArray->elts)[i];
-//            fprintf(stderr, "%d: %s\n", i, s);
-//        }
-
         ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initializing...");
 
-        parser = new RuleParser(s->process->pool);
-        parser->parseMainRules(tmpMainRulesArray);
-        parser->parseCheckRules(tmpCheckRulesArray);
-        parser->parseBasicRules(tmpBasicRulesArray);
+        parser = new RuleParser();
+        parser->parseMainRules(*tmpMainRules);
+        parser->parseCheckRules(*tmpCheckRules);
+        parser->parseBasicRules(*tmpBasicRules);
         parser->generateHashTables();
 
         /* clear the temporary arrays */
-        apr_array_clear(tmpMainRulesArray);
-        apr_array_clear(tmpCheckRulesArray);
-        apr_array_clear(tmpBasicRulesArray);
-
-        /* Schedule main cleanup for later, when the main pool is destroyed. */
-//        apr_pool_cleanup_register(pconf, (void *)s, defender_delete_ruleparser_object, apr_pool_cleanup_null);
+        delete tmpMainRules;
+        delete tmpCheckRules;
+        delete tmpBasicRules;
     }
+    return OK;
 }
 
 /* Our custom handler
@@ -81,9 +66,9 @@ int defender_handler(request_rec *r) {
 }
 
 int pre_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp) {
-    tmpMainRulesArray = apr_array_make(pconf, 209, sizeof(const char *));
-    tmpCheckRulesArray = apr_array_make(pconf, 5, sizeof(const char *));
-    tmpBasicRulesArray = apr_array_make(pconf, 32, sizeof(const char *));
+    tmpMainRules = new vector<string>();
+    tmpCheckRules = new vector<string>();
+    tmpBasicRules = new vector<string>();
     return OK;
 }
 
@@ -132,42 +117,44 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     return NULL; // success
 }
 
-const char *set_libinjection_sql_flag(cmd_parms *cmd, void *_scfg, const char *arg) {
+const char *set_libinjection_sql_flag(cmd_parms *cmd, void *_scfg, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    if (strcmp(arg, "1") == 0)
-        scfg->libinjection_sql = true;
+//    if (strcmp(arg, "1") == 0)
+        scfg->libinjection_sql = (bool) flag;
     scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
     return NULL;
 }
 
-const char *set_libinjection_xss_flag(cmd_parms *cmd, void *_scfg, const char *arg) {
+const char *set_libinjection_xss_flag(cmd_parms *cmd, void *_scfg, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    if (strcmp(arg, "1") == 0)
-        scfg->libinjection_xss = true;
+    scfg->libinjection_xss = (bool) flag;
     scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
     return NULL;
 }
 
-const char *set_learning_flag(cmd_parms *cmd, void *_scfg, const char *arg) {
+const char *set_learning_flag(cmd_parms *cmd, void *_scfg, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    if (strcmp(arg, "1") == 0)
-        scfg->learning = true;
+    scfg->learning = (bool) flag;
     return NULL;
 }
 
 const char *set_mainrules(cmd_parms *cmd, void *sconf_, const char *arg) {
-    *(const char **) apr_array_push(tmpMainRulesArray) = apr_pstrdup(tmpMainRulesArray->pool, arg);
+//    ap_log_perror(APLOG_MARK, APLOG_STARTUP|APLOG_NOERRNO, 0, cmd->pool, "parsing mainrule ...");
+    if (!strcmp(arg, ";")) {
+        return NULL;
+    }
+    tmpMainRules->push_back(arg);
     return NULL;
 }
 
 const char *set_checkrules(cmd_parms *cmd, void *sconf_, const char *arg1, const char *arg2) {
-    *(const char **) apr_array_push(tmpCheckRulesArray) = apr_pstrdup(tmpCheckRulesArray->pool, arg1);
-    *(const char **) apr_array_push(tmpCheckRulesArray) = apr_pstrdup(tmpCheckRulesArray->pool, arg2);
+    tmpCheckRules->push_back(arg1);
+    tmpCheckRules->push_back(arg2);
     return NULL;
 }
 
 const char *set_basicrules(cmd_parms *cmd, void *sconf_, const char *arg) {
-    *(const char **) apr_array_push(tmpBasicRulesArray) = apr_pstrdup(tmpBasicRulesArray->pool, arg);
+    tmpBasicRules->push_back(arg);
     return NULL;
 }
 
@@ -179,9 +166,9 @@ const command_rec directives[] = {
         {"CheckRule",    (cmd_func) set_checkrules, NULL, RSRC_CONF, ITERATE2, "Score directive"},
         {"BasicRule",    (cmd_func) set_basicrules, NULL, RSRC_CONF, ITERATE,  "Whitelist directive"},
         {"MatchLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the match log"},
-        {"LearningMode", (cmd_func) set_learning_flag,     NULL, RSRC_CONF, TAKE1,    ""},
-        {"LibinjectionSQL", (cmd_func) set_libinjection_sql_flag,     NULL, RSRC_CONF, TAKE1,    "Libinjection SQL toggle"},
-        {"LibinjectionXSS", (cmd_func) set_libinjection_xss_flag,     NULL, RSRC_CONF, TAKE1,    "Libinjection XSS toggle"},
+        {"LearningMode", (cmd_func) set_learning_flag,     NULL, RSRC_CONF, FLAG,    ""},
+        {"LibinjectionSQL", (cmd_func) set_libinjection_sql_flag,     NULL, RSRC_CONF, FLAG,    "Libinjection SQL toggle"},
+        {"LibinjectionXSS", (cmd_func) set_libinjection_xss_flag,     NULL, RSRC_CONF, FLAG,    "Libinjection XSS toggle"},
         {NULL}
 };
 

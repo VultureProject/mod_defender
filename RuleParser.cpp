@@ -1,9 +1,7 @@
 #include <apr_strings.h>
 #include "RuleParser.h"
 
-RuleParser::RuleParser(apr_pool_t *pool) {
-    p = pool;
-
+RuleParser::RuleParser() {
     /* Internal rules */
     http_rule_t libsqli;
     libsqli.id = 17;
@@ -16,20 +14,20 @@ RuleParser::RuleParser(apr_pool_t *pool) {
     internalRules[18] = libxss;
 }
 
-void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
+void RuleParser::parseMainRules(vector<string> rulesArray) {
     int ruleCount = 0;
-    for (int i = 0; i < rulesArray->nelts; i += 5) {
+    for (int i = 0; i < rulesArray.size(); i += 5) {
         bool error = false;
         DEBUG_CONF_MR("MainRule ");
         http_rule_t *rule = new http_rule_t;
         rule->br = new basic_rule_t;
         rule->type = MAIN_RULE;
-        if (strcmp(((const char **) rulesArray->elts)[i], "negative") == 0) {
+        if (rulesArray[i] == "negative") {
             rule->br->negative = true;
             DEBUG_CONF_MR("negative ");
             i++;
         }
-        pair<string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
+        pair<string, string> matchPatern = Util::splitAtFirst(rulesArray[i], ":");
         if (matchPatern.first == "rx") {
             try {
                 rule->br->rx = new regex(matchPatern.second, std::regex::optimize);
@@ -40,32 +38,32 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
             DEBUG_CONF_MR("rx " << matchPatern.second << " ");
         }
         if (matchPatern.first == "str") {
-            rule->br->str = apr_pstrdup(p, matchPatern.second.c_str());
+            rule->br->str = matchPatern.second;
             DEBUG_CONF_MR("str " << rule->br->str << " ");
         }
 
-        rule->logMsg = apr_pstrdup(p, ((const char **) rulesArray->elts)[i + 1] + 4);
+        rule->logMsg = rulesArray[i+1].substr(4);
         DEBUG_CONF_MR(rule->logMsg << " ");
 
-        string rawMatchZone = ((const char **) rulesArray->elts)[i + 2] + 3;
+        string rawMatchZone = rulesArray[i+2].substr(3);
         parseMatchZone(*rule, rawMatchZone);
 
-        string score = ((const char **) rulesArray->elts)[i + 3] + 2;
+        string score = rulesArray[i+3].substr(2);
         vector<string> scores = Util::split(score, ',');
         for (const string &sc : scores) {
             pair<string, string> scorepair = Util::splitAtFirst(sc, ":");
-            rule->scores.emplace_back(apr_pstrdup(p, scorepair.first.c_str()), std::stoi(scorepair.second));
+            rule->scores.emplace_back(scorepair.first, std::stoi(scorepair.second));
             DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
         }
 
-        rule->id = std::stoi(((const char **) rulesArray->elts)[i + 4] + 3);
+        rule->id = std::stoi(rulesArray[i+4].substr(3));
         DEBUG_CONF_MR(rule->id << " ");
 
         if (!error) {
             /*
              * Naxsi has a bug that adds rules twice if there is multiple custom locations
              * "issue: Multiple *_VAR lead to multiple matching"
-             * Handled here (additional feature)
+             * Handled here (enhancement)
              */
             if (rule->br->headersMz || rule->br->headersVarMz) { // push in headers rules
                 headerRules.push_back(rule);
@@ -85,16 +83,6 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
             }
         }
 
-        /*
-         * Nginx conf directive ends with a semicolon,
-         * Apache does not, so we skip it
-         */
-        const char* possibleSemiColor = ((const char **) rulesArray->elts)[i + 5];
-        if (possibleSemiColor != NULL && strcmp(possibleSemiColor, ";") == 0) {
-            i++;
-            DEBUG_CONF_MR(";");
-        }
-
         if (!error)
             ruleCount++;
         else
@@ -104,13 +92,12 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d MainRules loaded", ruleCount);
 }
 
-void RuleParser::parseCheckRules(apr_array_header_t *rulesArray) {
+void RuleParser::parseCheckRules(vector<string> rulesArray) {
     int ruleCount = 0;
-    for (int i = 0; i < rulesArray->nelts; i += 2) {
+    for (int i = 0; i < rulesArray.size(); i += 2) {
         DEBUG_CONF_CR("CheckRule ");
         check_rule_t chkrule;
-        string equation = string(((const char **) rulesArray->elts)[i]);
-        vector<string> eqParts = Util::split(equation, ' ');
+        vector<string> eqParts = Util::split(rulesArray[i], ' ');
 
         string tag = Util::rtrim(eqParts[0]);
         DEBUG_CONF_CR(tag << " ");
@@ -135,8 +122,7 @@ void RuleParser::parseCheckRules(apr_array_header_t *rulesArray) {
         chkrule.limit = std::stoi(eqParts[2]);
         DEBUG_CONF_CR(chkrule.limit << " ");
 
-        string action = string(((const char **) rulesArray->elts)[i + 1]);
-        action.pop_back(); // remove the trailing semicolon
+        string action = rulesArray[i+1];
 
         if (action == "BLOCK") {
             chkrule.action = BLOCK;
@@ -162,14 +148,13 @@ void RuleParser::parseCheckRules(apr_array_header_t *rulesArray) {
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d CheckRules loaded", ruleCount);
 }
 
-void RuleParser::parseBasicRules(apr_array_header_t *rulesArray) {
+void RuleParser::parseBasicRules(vector<string> rulesArray) {
     int ruleCount = 0;
-    for (int i = 0; i < rulesArray->nelts; i += 3) {
+    for (int i = 0; i < rulesArray.size(); i += 3) {
         DEBUG_CONF_BR("BasicRule ");
         http_rule_t rule;
         rule.type = BASIC_RULE;
-        string rawWhitelist = ((const char **) rulesArray->elts)[i] + 3;
-
+        string rawWhitelist = rulesArray[i].substr(3);
         rule.whitelist = true;
         rule.wlIds = Util::splitToInt(rawWhitelist, ',');
         for (const int &id : rule.wlIds) {
@@ -184,7 +169,7 @@ void RuleParser::parseBasicRules(apr_array_header_t *rulesArray) {
             continue;
         }
 
-        string rawMatchZone = ((const char **) rulesArray->elts)[i + 1] + 3;
+        string rawMatchZone = rulesArray[i+1].substr(3);
         rule.br = new basic_rule_t;
         parseMatchZone(rule, rawMatchZone);
 
@@ -426,7 +411,7 @@ void RuleParser::generateHashTables() {
             /*
              * Naxsi converts custom location string target to regex target here,
              * because it does not handle whitelist that mix _X elements with _VAR or $URL items.
-             * Not necessary ! Mod Defender supports it ;) (additional feature)
+             * Not necessary ! Mod Defender supports it ;) (enhancement)
              */
 
             rxMzWlr.push_back(curr_r);

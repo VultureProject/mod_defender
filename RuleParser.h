@@ -12,28 +12,28 @@
 #include <regex>
 #include <unordered_map>
 
-//#define DEBUG_CONFIG_MAINRULE
+#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
 #define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_MR(x)
 #endif
 
-//#define DEBUG_CONFIG_CHECKRULE
+#define DEBUG_CONFIG_CHECKRULE
 #ifdef DEBUG_CONFIG_CHECKRULE
 #define DEBUG_CONF_CR(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_CR(x)
 #endif
 
-//#define DEBUG_CONFIG_BASICRULE
+#define DEBUG_CONFIG_BASICRULE
 #ifdef DEBUG_CONFIG_BASICRULE
 #define DEBUG_CONF_BR(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_BR(x)
 #endif
 
-//#define DEBUG_CONFIG_MATCHZONE
+#define DEBUG_CONFIG_MATCHZONE
 #ifdef DEBUG_CONFIG_MATCHZONE
 #define DEBUG_CONF_MZ(x) do { std::cerr << x; } while (0)
 #else
@@ -203,15 +203,14 @@ typedef struct {
     vector<int> wlIds;
     /* "common" data for all rules */
     int id;
-    const char *logMsg = NULL; // a specific log message
+    string logMsg; // a specific log message
     /* List of scores increased on rule match. */
-    vector<pair<const char *, int>> scores;
+    vector<pair<string, int>> scores;
     basic_rule_t *br; // specific rule stuff
 } http_rule_t;
 
 class RuleParser {
 private:
-    apr_pool_t *p;
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
     bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, enum MATCH_ZONE zone, bool targetName);
     bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
@@ -235,10 +234,10 @@ public:
     vector<http_rule_t> disabled_rules; // rules that are globally disabled in one location
     unordered_map<int, http_rule_t> internalRules;
 
-    RuleParser(apr_pool_t *p);
-    void parseMainRules(apr_array_header_t *rulesArray);
-    void parseCheckRules(apr_array_header_t *rulesArray);
-    void parseBasicRules(apr_array_header_t *rulesArray);
+    RuleParser();
+    void parseMainRules(vector<string> rulesArray);
+    void parseCheckRules(vector<string> rulesArray);
+    void parseBasicRules(vector<string> rulesArray);
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     void generateHashTables();
     void wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx);
