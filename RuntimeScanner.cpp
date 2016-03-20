@@ -94,7 +94,7 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t& action) {
 }
 
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const string& name, const string& value, enum MATCH_ZONE zone, bool targetName) {
-    if (parser.isRuleWhitelisted(uri, rule, name, zone, targetName)) {
+    if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
         cerr << Util::formatLog(DEFLOG_WARN, r->useragent_ip);
         cerr << KGRN "✓ Rule #" << rule.id << " ";
         cerr << "(" << rule.logMsg << ") ";
@@ -235,24 +235,55 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
 }
 
 void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string& name, const string& value) {
-    const char* valuecstr = apr_pstrdup(pool, value.c_str());
-    size_t slen = strlen(value.c_str());
+    if (value.empty() && name.empty())
+        return;
+    char* valuecstr = NULL;
+    size_t valuelen = 0;
+    char* namecstr = NULL;
+    size_t namelen = 0;
+    if (!value.empty()) {
+        valuecstr = apr_pstrdup(pool, value.c_str());
+        valuelen = strlen(value.c_str());
+    }
+    if (!name.empty()) {
+        namecstr = apr_pstrdup(pool, value.c_str());
+        namelen = strlen(value.c_str());
+    }
+
 
     if (scfg->libinjection_sql) {
         struct libinjection_sqli_state state;
-        libinjection_sqli_init(&state, valuecstr, slen, FLAG_NONE);
 
-        if (libinjection_is_sqli(&state)) {
-            http_rule_t& libsqlirule = parser.internalRules[17];
-            libsqlirule.br->str = state.fingerprint;
-            applyCheckRule(libsqlirule, 1, name, value, zone, false);
+        if (valuecstr) {
+            libinjection_sqli_init(&state, valuecstr, valuelen, FLAG_NONE);
+
+            if (libinjection_is_sqli(&state)) {
+                http_rule_t& libsqlirule = parser.internalRules[17];
+                libsqlirule.logMsg = state.fingerprint;
+                applyCheckRule(libsqlirule, 1, name, value, zone, false);
+            }
+        }
+
+        if (namecstr) {
+            libinjection_sqli_init(&state, namecstr, namelen, FLAG_NONE);
+
+            if (libinjection_is_sqli(&state)) {
+                http_rule_t& libsqlirule = parser.internalRules[17];
+                libsqlirule.logMsg = state.fingerprint;
+                applyCheckRule(libsqlirule, 1, name, value, zone, true);
+            }
         }
     }
 
     if (scfg->libinjection_xss) {
-        if (libinjection_xss(valuecstr, slen)) {
+        if (valuecstr && libinjection_xss(valuecstr, valuelen)) {
             http_rule_t& libxssrule = parser.internalRules[18];
             applyCheckRule(libxssrule, 1, name, value, zone, false);
+        }
+
+        if (namecstr && libinjection_xss(namecstr, namelen)) {
+            http_rule_t& libxssrule = parser.internalRules[18];
+            applyCheckRule(libxssrule, 1, name, value, zone, true);
         }
     }
 }

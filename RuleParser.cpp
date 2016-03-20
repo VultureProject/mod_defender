@@ -32,7 +32,7 @@ void RuleParser::parseMainRules(apr_array_header_t *rulesArray) {
         pair<string, string> matchPatern = Util::splitAtFirst(((const char **) rulesArray->elts)[i], ":");
         if (matchPatern.first == "rx") {
             try {
-                rule->br->rx = new regex(matchPatern.second);
+                rule->br->rx = new regex(matchPatern.second, std::regex::optimize);
             } catch (std::regex_error &e) {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                 error = true;
@@ -296,7 +296,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             }
             else { // Regex MatchZone
                 try {
-                    customRule.targetRx = regex(cmz.second);
+                    customRule.targetRx = new regex(cmz.second, std::regex::optimize);
                 } catch (std::regex_error &e) {
                     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                     continue;
@@ -306,6 +306,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             rule.br->customLocations.push_back(customRule);
         }
     }
+    DEBUG_CONF_MZ((rule.br->rxMz ? "(rxMz) " : " "));
 }
 
 /* check rule, returns associed zone, as well as location index.
@@ -368,7 +369,7 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
         fullname += "#";
         fullname += curr.br->customLocations[name_idx].target;
     }
-    else if (uri_idx != -1 && name_idx == -1) { // only uri
+    else if (uri_idx != -1) { // only uri
         DEBUG_CONF_WLRF("whitelist has uri");
         fullname += curr.br->customLocations[uri_idx].target;
     }
@@ -399,7 +400,7 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
 	 so that WL system won't get fooled by an argname like an URL */
     if (uri_idx != -1 && name_idx == -1)
         father_wlr.uriOnly = true;
-    if (curr.br->targetName) // If target_name is present in son, report it
+    if (curr.br->targetName) // If targetName is present in son, report it
         father_wlr.targetName = curr.br->targetName;
 }
 
@@ -422,7 +423,7 @@ void RuleParser::generateHashTables() {
         enum MATCH_ZONE zone = UNKNOWN;
 
         /* no custom location at all means that the rule is disabled */
-        if (curr_r.br->customLocations.size() == 0) {
+        if (curr_r.br->customLocations.empty()) {
             disabled_rules.push_back(curr_r);
             continue;
         }
@@ -435,7 +436,13 @@ void RuleParser::generateHashTables() {
         ** at runtime.
         */
         if (curr_r.br->rxMz) {
-            rxmzWlr.push_back(curr_r);
+            /*
+             * Naxsi converts custom location string target to regex target here,
+             * because it does not handle whitelist that mix _X elements with _VAR or $URL items.
+             * Not necessary ! Mod Defender supports it ;)
+             */
+
+            rxMzWlr.push_back(curr_r);
             continue;
         }
 
@@ -539,7 +546,7 @@ bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name
     DEBUG_CONF_WL("finished wl check, failed.");
 }
 
-bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, enum MATCH_ZONE zone,
+bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string& uri, const string &name, enum MATCH_ZONE zone,
                                     bool targetName) {
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
@@ -615,7 +622,7 @@ bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, c
 
     /* Plain URI whitelists */
     /* check the URL no matter what zone we're in */
-    if (wlUrlHash.size() > 0) {
+    if (!wlUrlHash.empty()) {
         /* mimic find_wl_in_hash, we are looking in a different hashtable */
         string hashname = string(uri);
         std::transform(hashname.begin(), hashname.end(), hashname.begin(), ::tolower);
@@ -660,7 +667,7 @@ bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, c
     if (found && isWhitelistAdapted(wlRule, name, zone, rule, MIXED, targetName))
         return true;
 
-    if (isRuleWhitelistedRx(rule, name, zone, targetName)) {
+    if (isRuleWhitelistedRx(rule, uri, name, zone, targetName)) {
         DEBUG_CONF_WL("Whitelisted by RX !");
         return true;
     }
@@ -668,69 +675,100 @@ bool RuleParser::isRuleWhitelisted(const string& uri, const http_rule_t &rule, c
     return false;
 }
 
-bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string &name, enum MATCH_ZONE zone, bool targetName) {
+bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, enum MATCH_ZONE zone, bool targetName) {
     /* Look it up in regexed whitelists for matchzones */
-    if (rxmzWlr.size() > 0)
+    if (rxMzWlr.empty()) {
+        DEBUG_CONF_WL("No rx matchzone rules");
         return false;
+    }
 
-    for (const http_rule_t &rxMwRule : rxmzWlr) {
-        if (!rxMwRule.br || rxMwRule.br->customLocations.size() == 0) {
+
+    for (const http_rule_t &rxMzRule : rxMzWlr) {
+        if (!rxMzRule.br || rxMzRule.br->customLocations.empty()) {
             DEBUG_CONF_WL("Rule pushed to RXMZ, but has no custom_location.");
             continue;
         }
 
         /*
-        ** once we have pointer to the rxMwRule :
+        ** once we have pointer to the rxMzRule :
         ** - go through each custom location (ie. ARGS_VAR_X:foobar*)
         ** - verify that regular expressions match. If not, it means whitelist does not apply.
         */
-        if (rxMwRule.br->zone != zone) {
-            DEBUG_CONF_WL("Not targeting same zone.");
+        if (rxMzRule.br->zone != zone) {
+            DEBUG_CONF_WL("Not targeting same zone: custom rule loc zone: " << match_zones[rxMzRule.br->zone] << " current zone: " << match_zones[zone]);
             continue;
         }
 
-        if (targetName != rxMwRule.br->targetName) {
-            DEBUG_CONF_WL("only one target_name");
+        if (targetName != rxMzRule.br->targetName) {
+            DEBUG_CONF_WL("Only one target name");
             continue;
         }
 
         bool violation = false;
-        for (const custom_rule_location_t& loc : rxMwRule.br->customLocations) {
+        for (const custom_rule_location_t& loc : rxMzRule.br->customLocations) {
             if (loc.bodyVar) {
-                bool match = regex_match(name, loc.targetRx);
-                if (!match) {
-                    violation = true;
-                    DEBUG_CONF_WL("[BODY] FAIL (str:" << name << ")");
-                    break;
+                if (loc.targetRx) {
+                    if (!regex_search(name, *loc.targetRx)) {
+                        violation = true;
+                        DEBUG_CONF_WL("[BODY] RX FAIL (str:" << name << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[BODY] RX Match (str:" << name << ")");
                 }
-                DEBUG_CONF_WL("[BODY] Match (str:" << name << ")");
+                else {
+                    if (name != loc.target) {
+                        violation = true;
+                        DEBUG_CONF_WL("[BODY] FAIL (str:" << name << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[BODY] Match (str:" << name << ")");
+                }
             }
             if (loc.argsVar) {
-                bool match = regex_match(name, loc.targetRx);
-                if (!match) {
-                    violation = true;
-                    DEBUG_CONF_WL("[ARGS] FAIL (str:" << name << ")");
-                    break;
+                if (loc.targetRx) {
+                    if (!regex_search(name, *loc.targetRx)) {
+                        violation = true;
+                        DEBUG_CONF_WL("[ARGS] RX FAIL (str:" << name << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[ARGS] RX Match (str:" << name << ")");
                 }
-                DEBUG_CONF_WL("[ARGS] Match (str:" << name << ")");
+                else {
+                    if (name != loc.target) {
+                        violation = true;
+                        DEBUG_CONF_WL("[ARGS] FAIL (str:" << name << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[ARGS] Match (str:" << name << ")");
+                }
             }
             if (loc.specificUrl) {
-                bool match = regex_match(name, loc.targetRx);
-                if (!match) {
-                    violation = true;
-                    DEBUG_CONF_WL("[URI] FAIL (str:" << name << ")");
-                    break;
+                if (loc.targetRx) {
+                    if (!regex_search(uri, *loc.targetRx)) {
+                        violation = true;
+                        DEBUG_CONF_WL("[URI] RX FAIL (str:" << uri << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[URI] RX Match (str:" << uri << ")");
                 }
-                DEBUG_CONF_WL("[URI] Match (str:" << name << ")");
+                else {
+                    if (uri != loc.target) {
+                        violation = true;
+                        DEBUG_CONF_WL("[URI] FAIL (str:" << uri << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[URI] Match (str:" << uri << ")");
+                }
             }
         }
 
         if (!violation) {
-            DEBUG_CONF_WL("rxMwRule whitelisted by rx");
-            if (checkIds(rule.id, rxMwRule.wlIds))
+            DEBUG_CONF_WL("rxMzRule whitelisted by rx");
+            if (checkIds(rule.id, rxMzRule.wlIds))
                 return true;
         }
     }
+    return false;
 }
 
 bool RuleParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, enum MATCH_ZONE zone) {

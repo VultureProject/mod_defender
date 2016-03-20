@@ -105,7 +105,7 @@ typedef struct {
     bool argsVar = false; // match in [name] var of args
     bool specificUrl = false; // match on URL [name]
     string target; // to be used for string match zones
-    regex targetRx; // to be used for regexed match zones
+    regex *targetRx = nullptr; // to be used for regexed match zones
 } custom_rule_location_t;
 
 /*
@@ -213,7 +213,7 @@ class RuleParser {
 private:
     apr_pool_t *p;
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
-    bool isRuleWhitelistedRx(const http_rule_t &rule, const string &name, MATCH_ZONE zone, bool targetName);
+    bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, enum MATCH_ZONE zone, bool targetName);
     bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
     string parseCode(std::regex_constants::error_type etype);
@@ -226,7 +226,7 @@ public:
     vector<http_rule_t*> genericRules; // URL
 
     vector<whitelist_rule_t> tmpWlr; // raw array of transformed whitelists
-    vector<http_rule_t> rxmzWlr; // raw array of regex-mz whitelists
+    vector<http_rule_t> rxMzWlr; // raw array of regex-mz whitelists
 
     unordered_map<string, whitelist_rule_t> wlUrlHash; // hash table of whitelisted URL rules
     unordered_map<string, whitelist_rule_t> wlArgsHash; // hash table of whitelisted ARGS rules
@@ -245,7 +245,7 @@ public:
     void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     bool checkIds(int matchId, const vector<int> &wlIds);
     bool findWlInHash(whitelist_rule_t &wlRule, const string &key, MATCH_ZONE zone);
-    bool isRuleWhitelisted(const string& uri, const http_rule_t &rule, const string &name, MATCH_ZONE zone, bool targetName);
+    bool isRuleWhitelisted(const http_rule_t &rule, const string& uri, const string &name, MATCH_ZONE zone, bool targetName);
 };
 
 
