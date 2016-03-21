@@ -45,7 +45,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 
 1. Populate it with conf
 	```sh
-	$ sudo wget -O /etc/moddefender/core_mainrules.conf \
+	$ sudo wget -O /etc/moddefender/core_rules.conf \
 	https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
 	```
     ```sh

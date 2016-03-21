@@ -12,28 +12,28 @@
 #include <regex>
 #include <unordered_map>
 
-#define DEBUG_CONFIG_MAINRULE
+//#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
 #define DEBUG_CONF_MR(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_MR(x)
 #endif
 
-#define DEBUG_CONFIG_CHECKRULE
+//#define DEBUG_CONFIG_CHECKRULE
 #ifdef DEBUG_CONFIG_CHECKRULE
 #define DEBUG_CONF_CR(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_CR(x)
 #endif
 
-#define DEBUG_CONFIG_BASICRULE
+//#define DEBUG_CONFIG_BASICRULE
 #ifdef DEBUG_CONFIG_BASICRULE
 #define DEBUG_CONF_BR(x) do { std::cerr << x; } while (0)
 #else
 #define DEBUG_CONF_BR(x)
 #endif
 
-#define DEBUG_CONFIG_MATCHZONE
+//#define DEBUG_CONFIG_MATCHZONE
 #ifdef DEBUG_CONFIG_MATCHZONE
 #define DEBUG_CONF_MZ(x) do { std::cerr << x; } while (0)
 #else
@@ -236,7 +236,7 @@ public:
 
     RuleParser();
     void parseMainRules(vector<string> rulesArray);
-    void parseCheckRules(vector<string> rulesArray);
+    const char* parseCheckRule(apr_pool_t* pool, string equation, string actionArg);
     void parseBasicRules(vector<string> rulesArray);
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     void generateHashTables();

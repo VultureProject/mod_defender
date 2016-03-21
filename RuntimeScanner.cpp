@@ -31,7 +31,6 @@ void RuntimeScanner::readPost() {
     apr_array_header_t *POST = NULL;
     int res = ap_parse_form_data(r, NULL, &POST, -1, HUGE_STRING_LEN);
     if (res != OK || !POST) return; /* Return NULL if we failed or if there is no POST data */
-    int i = 0;
     while (POST && !apr_is_empty_array(POST)) {
         ap_form_pair_t *formPair = (ap_form_pair_t *) apr_array_pop(POST);
         apr_off_t len;
@@ -45,7 +44,6 @@ void RuntimeScanner::readPost() {
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);
         std::transform(value.begin(), value.end(), value.begin(), ::tolower);
         body.emplace_back(key, value);
-        i++;
     }
 }
 
@@ -105,7 +103,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
         cerr << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
         return;
     }
-    // rule negative case
+    // negative rule case
     if (nbMatch == 0)
         nbMatch = 1;
     for (const pair<string, int> &tagScore : rule.scores) {
@@ -168,7 +166,7 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
     int nbMatch = 0;
     for (int i = 0; i < rules.size() && ((!block || scfg->learning) && !drop); i++) {
         const http_rule_t& rule = *rules[i];
-        DEBUG_RUNTIME_BRS("Checking in " << match_zones[zone] << " rule #" << rule.id << " ");
+        DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 
         /* does the rule have a custom location ? custom location means checking only on a specific argument */
         if (!name.empty() && rule.br->customLocation) {
@@ -178,7 +176,7 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
                 /* check if the custom location zone match with the current zone (enhancement) */
                 if (!((loc.bodyVar && zone == BODY) || (loc.argsVar && zone == ARGS) ||
                         (loc.headersVar && zone == HEADERS) || (loc.specificUrl && zone == URL))) {
-                    DEBUG_RUNTIME_BRS("Custom location zone mismatch ");
+                    DEBUG_RUNTIME_BRS("loc-zone-mismatch ");
                     continue;
                 }
                 /* if the name are the same, check */

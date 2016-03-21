@@ -32,7 +32,8 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
             try {
                 rule->br->rx = new regex(matchPatern.second, std::regex::optimize);
             } catch (std::regex_error &e) {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPatern.second.c_str(), parseCode(e.code()).c_str());
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPatern.second.c_str(),
+                             parseCode(e.code()).c_str());
                 error = true;
             }
             DEBUG_CONF_MR("rx " << matchPatern.second << " ");
@@ -42,13 +43,13 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
             DEBUG_CONF_MR("str " << rule->br->str << " ");
         }
 
-        rule->logMsg = rulesArray[i+1].substr(4);
+        rule->logMsg = rulesArray[i + 1].substr(4);
         DEBUG_CONF_MR(rule->logMsg << " ");
 
-        string rawMatchZone = rulesArray[i+2].substr(3);
+        string rawMatchZone = rulesArray[i + 2].substr(3);
         parseMatchZone(*rule, rawMatchZone);
 
-        string score = rulesArray[i+3].substr(2);
+        string score = rulesArray[i + 3].substr(2);
         vector<string> scores = Util::split(score, ',');
         for (const string &sc : scores) {
             pair<string, string> scorepair = Util::splitAtFirst(sc, ":");
@@ -56,7 +57,7 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
             DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
         }
 
-        rule->id = std::stoi(rulesArray[i+4].substr(3));
+        rule->id = std::stoi(rulesArray[i + 4].substr(3));
         DEBUG_CONF_MR(rule->id << " ");
 
         if (!error) {
@@ -77,7 +78,8 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
                 genericRules.push_back(rule);
                 DEBUG_CONF_MR("[generic] ");
             }
-            if (rule->br->argsMz || rule->br->argsVarMz) { // push in GET arg rules, but we should push in POST rules too
+            if (rule->br->argsMz ||
+                rule->br->argsVarMz) { // push in GET arg rules, but we should push in POST rules too
                 getRules.push_back(rule);
                 DEBUG_CONF_MR("[get] ");
             }
@@ -92,60 +94,60 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d MainRules loaded", ruleCount);
 }
 
-void RuleParser::parseCheckRules(vector<string> rulesArray) {
-    int ruleCount = 0;
-    for (int i = 0; i < rulesArray.size(); i += 2) {
-        DEBUG_CONF_CR("CheckRule ");
-        check_rule_t chkrule;
-        vector<string> eqParts = Util::split(rulesArray[i], ' ');
+const char* RuleParser::parseCheckRule(apr_pool_t* pool, string equation, string action) {
+    DEBUG_CONF_CR("CheckRule ");
+    check_rule_t chkrule;
+    vector<string> eqParts = Util::split(equation, ' ');
 
-        string tag = Util::rtrim(eqParts[0]);
-        DEBUG_CONF_CR(tag << " ");
+    string tag = Util::rtrim(eqParts[0]);
+    DEBUG_CONF_CR(tag << " ");
 
-        if (eqParts[1] == ">=") {
-            chkrule.comparator = SUP_OR_EQUAL;
-            DEBUG_CONF_CR(">= ");
-        }
-        else if (eqParts[1] == ">") {
-            chkrule.comparator = SUP;
-            DEBUG_CONF_CR("> ");
-        }
-        else if (eqParts[1] == "<=") {
-            chkrule.comparator = INF_OR_EQUAL;
-            DEBUG_CONF_CR("<= ");
-        }
-        else if (eqParts[1] == "<") {
-            chkrule.comparator = INF;
-            DEBUG_CONF_CR("< ");
-        }
+    if (eqParts[1] == ">=") {
+        chkrule.comparator = SUP_OR_EQUAL;
+        DEBUG_CONF_CR(">= ");
+    }
+    else if (eqParts[1] == ">") {
+        chkrule.comparator = SUP;
+        DEBUG_CONF_CR("> ");
+    }
+    else if (eqParts[1] == "<=") {
+        chkrule.comparator = INF_OR_EQUAL;
+        DEBUG_CONF_CR("<= ");
+    }
+    else if (eqParts[1] == "<") {
+        chkrule.comparator = INF;
+        DEBUG_CONF_CR("< ");
+    }
 
+    try {
         chkrule.limit = std::stoi(eqParts[2]);
         DEBUG_CONF_CR(chkrule.limit << " ");
-
-        string action = rulesArray[i+1];
-
-        if (action == "BLOCK") {
-            chkrule.action = BLOCK;
-            DEBUG_CONF_CR("BLOCK ");
-        }
-        else if (action == "DROP") {
-            chkrule.action = DROP;
-            DEBUG_CONF_CR("DROP ");
-        }
-        else if (action == "ALLOW") {
-            chkrule.action = ALLOW;
-            DEBUG_CONF_CR("ALLOW ");
-        }
-        else if (action == "LOG") {
-            chkrule.action = LOG;
-            DEBUG_CONF_CR("LOG ");
-        }
-
-        checkRules[tag] = chkrule;
-        ruleCount++;
-        DEBUG_CONF_CR(endl);
     }
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d CheckRules loaded", ruleCount);
+    catch (std::exception const &e) {
+        return apr_psprintf(pool, "%s cannot convert \"%s\" to interger", e.what(), eqParts[2].c_str());
+    }
+
+    if (action == "BLOCK") {
+        chkrule.action = BLOCK;
+        DEBUG_CONF_CR("BLOCK ");
+    }
+    else if (action == "DROP") {
+        chkrule.action = DROP;
+        DEBUG_CONF_CR("DROP ");
+    }
+    else if (action == "ALLOW") {
+        chkrule.action = ALLOW;
+        DEBUG_CONF_CR("ALLOW ");
+    }
+    else if (action == "LOG") {
+        chkrule.action = LOG;
+        DEBUG_CONF_CR("LOG ");
+    }
+
+    checkRules[tag] = chkrule;
+
+    DEBUG_CONF_CR(endl);
+    return NULL;
 }
 
 void RuleParser::parseBasicRules(vector<string> rulesArray) {
@@ -161,7 +163,7 @@ void RuleParser::parseBasicRules(vector<string> rulesArray) {
             DEBUG_CONF_BR(id << " ");
         }
 
-        // If not matchzone specified
+        // If no matchzone specified
         if (rawWhitelist.back() == ';') {
             i -= 2;
             whitelistRules.push_back(rule);
@@ -169,7 +171,7 @@ void RuleParser::parseBasicRules(vector<string> rulesArray) {
             continue;
         }
 
-        string rawMatchZone = rulesArray[i+1].substr(3);
+        string rawMatchZone = rulesArray[i + 1].substr(3);
         rule.br = new basic_rule_t;
         parseMatchZone(rule, rawMatchZone);
 
@@ -328,7 +330,7 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int
 }
 
 void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum MATCH_ZONE &zone, int &uri_idx,
-                       int &name_idx) {
+                         int &name_idx) {
     string fullname = "";
     /* if WL targets variable name instead of content, prefix hash with '#' */
     if (curr.br->targetName) {
@@ -473,8 +475,9 @@ bool RuleParser::checkIds(int matchId, const vector<int> &wlIds) {
     return negative;
 }
 
-bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum MATCH_ZONE zone, const http_rule_t &rule,
-                                  enum MATCH_TYPE type, bool targetName) {
+bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, enum MATCH_ZONE zone,
+                                    const http_rule_t &rule,
+                                    enum MATCH_TYPE type, bool targetName) {
     if (zone == FILE_EXT)
         zone = BODY; // FILE_EXT zone is just a hack, as it indeed targets BODY
 
@@ -491,7 +494,7 @@ bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name
     if (type == NAME_ONLY) {
         DEBUG_CONF_WL("Name match in zone " <<
                       (zone == ARGS ? "ARGS" : zone == BODY ? "BODY" : zone == HEADERS ? "HEADERS"
-                                                                                              : "UNKNOWN!!!!!"));
+                                                                                       : "UNKNOWN!!!!!"));
         //False Positive, there was a whitelist that matches the argument name,
         // But is was actually matching an existing URI name.
         if (zone != wlrule.zone || wlrule.uriOnly) {
@@ -518,8 +521,8 @@ bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name
     DEBUG_CONF_WL("finished wl check, failed.");
 }
 
-bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string& uri, const string &name, enum MATCH_ZONE zone,
-                                    bool targetName) {
+bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, const string &name, enum MATCH_ZONE zone,
+                                   bool targetName) {
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
         if (checkIds(rule.id, disabledRule.wlIds)) { // Is rule disabled ?
@@ -647,7 +650,8 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string& uri, c
     return false;
 }
 
-bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, enum MATCH_ZONE zone, bool targetName) {
+bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name,
+                                     enum MATCH_ZONE zone, bool targetName) {
     /* Look it up in regexed whitelists for matchzones */
     if (rxMzWlr.empty()) {
         DEBUG_CONF_WL("No rx matchzone rules");
@@ -667,7 +671,8 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
         ** - verify that regular expressions match. If not, it means whitelist does not apply.
         */
         if (rxMzRule.br->zone != zone) {
-            DEBUG_CONF_WL("Not targeting same zone: custom rule loc zone: " << match_zones[rxMzRule.br->zone] << " current zone: " << match_zones[zone]);
+            DEBUG_CONF_WL("Not targeting same zone: custom rule loc zone: " << match_zones[rxMzRule.br->zone] <<
+                          " current zone: " << match_zones[zone]);
             continue;
         }
 
@@ -677,7 +682,7 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
         }
 
         bool violation = false;
-        for (const custom_rule_location_t& loc : rxMzRule.br->customLocations) {
+        for (const custom_rule_location_t &loc : rxMzRule.br->customLocations) {
             if (loc.bodyVar) {
                 if (loc.targetRx) {
                     if (!regex_search(name, *loc.targetRx)) {

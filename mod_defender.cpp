@@ -7,7 +7,6 @@ extern module AP_MODULE_DECLARE_DATA defender_module;
 RuleParser* parser = nullptr;
 
 vector<string> *tmpMainRules;
-vector<string> *tmpCheckRules;
 vector<string> *tmpBasicRules;
 
 /* Custom function to ensure our RuntimeScanner get's deleted at the
@@ -15,6 +14,13 @@ vector<string> *tmpBasicRules;
 apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     if (inPtr)
         delete (RuntimeScanner *) inPtr;
+    return OK;
+}
+
+int pre_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp) {
+    parser = new RuleParser();
+    tmpMainRules = new vector<string>();
+    tmpBasicRules = new vector<string>();
     return OK;
 }
 
@@ -26,17 +32,15 @@ int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_r
         apr_pool_userdata_set((const void *)1, "moddefender-init-flag", apr_pool_cleanup_null, s->process->pool);
     }
     else {
-        ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initializing...");
-
-        parser = new RuleParser();
         parser->parseMainRules(*tmpMainRules);
-        parser->parseCheckRules(*tmpCheckRules);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%lu CheckRules loaded", parser->checkRules.size());
         parser->parseBasicRules(*tmpBasicRules);
         parser->generateHashTables();
 
+        ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initialized successfully");
+
         /* clear the temporary arrays */
         delete tmpMainRules;
-        delete tmpCheckRules;
         delete tmpBasicRules;
     }
     return OK;
@@ -63,13 +67,6 @@ int defender_handler(request_rec *r) {
 
     /* Run our application handler. */
     return runtimeScanner->runHandler();
-}
-
-int pre_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp) {
-    tmpMainRules = new vector<string>();
-    tmpCheckRules = new vector<string>();
-    tmpBasicRules = new vector<string>();
-    return OK;
 }
 
 /* Apache callback to register our hooks.
@@ -119,8 +116,7 @@ const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
 
 const char *set_libinjection_sql_flag(cmd_parms *cmd, void *_scfg, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-//    if (strcmp(arg, "1") == 0)
-        scfg->libinjection_sql = (bool) flag;
+    scfg->libinjection_sql = (bool) flag;
     scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
     return NULL;
 }
@@ -139,7 +135,6 @@ const char *set_learning_flag(cmd_parms *cmd, void *_scfg, int flag) {
 }
 
 const char *set_mainrules(cmd_parms *cmd, void *sconf_, const char *arg) {
-//    ap_log_perror(APLOG_MARK, APLOG_STARTUP|APLOG_NOERRNO, 0, cmd->pool, "parsing mainrule ...");
     if (!strcmp(arg, ";")) {
         return NULL;
     }
@@ -148,9 +143,7 @@ const char *set_mainrules(cmd_parms *cmd, void *sconf_, const char *arg) {
 }
 
 const char *set_checkrules(cmd_parms *cmd, void *sconf_, const char *arg1, const char *arg2) {
-    tmpCheckRules->push_back(arg1);
-    tmpCheckRules->push_back(arg2);
-    return NULL;
+    return parser->parseCheckRule(cmd->pool, arg1, arg2);
 }
 
 const char *set_basicrules(cmd_parms *cmd, void *sconf_, const char *arg) {
@@ -163,7 +156,7 @@ const char *set_basicrules(cmd_parms *cmd, void *sconf_, const char *arg) {
  */
 const command_rec directives[] = {
         {"MainRule",     (cmd_func) set_mainrules,  NULL, RSRC_CONF, ITERATE,  "Match directive"},
-        {"CheckRule",    (cmd_func) set_checkrules, NULL, RSRC_CONF, ITERATE2, "Score directive"},
+        {"CheckRule",    (cmd_func) set_checkrules, NULL, RSRC_CONF, TAKE2, "Score directive"},
         {"BasicRule",    (cmd_func) set_basicrules, NULL, RSRC_CONF, ITERATE,  "Whitelist directive"},
         {"MatchLog",   (cmd_func) set_errorlog_path,  NULL, RSRC_CONF, TAKE1,    "Path to the match log"},
         {"LearningMode", (cmd_func) set_learning_flag,     NULL, RSRC_CONF, FLAG,    ""},
