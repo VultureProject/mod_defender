@@ -16,10 +16,16 @@ set(SOURCE_FILES mod_defender.cpp mod_defender.hpp RuntimeScanner.cpp RuntimeSca
         RuleParser.cpp RuleParser.h Util.cpp Util.h)
 add_library(mod_defender SHARED ${SOURCE_FILES})
 
+set(RELOAD_APACHE_CMD sudo service apache2 restart)
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+    set(RELOAD_APACHE_CMD sudo service apache24 restart)
+endif()
+
 add_custom_command(
         TARGET mod_defender
         POST_BUILD
         COMMAND cat ${CMAKE_CURRENT_SOURCE_DIR}/lib/sudo_pass | sudo -S apxs -n defender -i ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so
-        COMMAND sudo service apache2 restart
+        COMMAND ${RELOAD_APACHE_CMD}
         COMMENT "Running APXS then reloading Apache"
 )
