@@ -38,18 +38,17 @@ using std::sregex_iterator;
 using std::regex_match;
 using std::distance;
 using std::unordered_map;
+using std::transform;
 
 class RuntimeScanner {
 private:
     request_rec* r;
     server_config_t* scfg;
     RuleParser& parser;
-    apr_pool_t* pool;
     stringstream matchVars;
     unsigned int rulesMatchedCount = 0;
     vector<pair<const string, const string>> headers;
     vector<pair<const string, const string>> args;
-    vector<pair<const string, const string>> body;
     string uri;
     unordered_map<string, int> matchScores;
 
@@ -59,10 +58,11 @@ private:
     bool log = false;
 
 public:
-    RuntimeScanner(request_rec* rec, server_config_t* scfg, RuleParser& parser);
-    static int storeTable(void*, const char*, const char*);
-    void readPost();
-    int runHandler();
+    string contentType;
+    string* rawBody = nullptr;
+
+    RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser) {}
+    int postReadRequest(request_rec *rec);
     void applyCheckRuleAction(const rule_action_t &action);
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
@@ -72,6 +72,8 @@ public:
                         MATCH_ZONE zone, bool targetName);
     string formatMatch(const http_rule_t &rule, int nbMatch, MATCH_ZONE zone, const string &name, const string &value,
                        bool targetName);
+    int processBody();
+    void writeLearningLog();
 };
 
 #endif /* RUNTIMESCANNER_HPP */

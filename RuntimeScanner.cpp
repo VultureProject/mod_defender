@@ -1,67 +1,10 @@
 #include "RuntimeScanner.hpp"
-#include <apr_strings.h>
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-#include "mod_defender.hpp"
-#include "RuleParser.h"
 
-RuntimeScanner::RuntimeScanner(request_rec* rec, server_config_t* scfg, RuleParser& parser) : parser(parser) {
-    r = rec;
-    this->scfg = scfg;
-    pool = r->pool;
-
-    apr_table_do(storeTable, &headers, r->headers_in, NULL); // Store every HTTP header received
-
-    /* Retrieve GET parameters */
-    apr_table_t *GET = NULL;
-    ap_args_to_table(r, &GET);
-    apr_table_do(storeTable, &args, GET, NULL);
-
-    readPost(); // Store body form data
-
-    uri = string(r->parsed_uri.path);
-    std::transform(uri.begin(), uri.end(), uri.begin(), ::tolower);
-}
-
-/*
- * Retrieve variables from POST form data
- */
-void RuntimeScanner::readPost() {
-    apr_array_header_t *POST = NULL;
-    int res = ap_parse_form_data(r, NULL, &POST, -1, HUGE_STRING_LEN);
-    if (res != OK || !POST) return; /* Return NULL if we failed or if there is no POST data */
-    while (POST && !apr_is_empty_array(POST)) {
-        ap_form_pair_t *formPair = (ap_form_pair_t *) apr_array_pop(POST);
-        apr_off_t len;
-        apr_brigade_length(formPair->value, 1, &len);
-        apr_size_t size = (apr_size_t) len;
-        char *buffer = (char *) apr_palloc(pool, size + 1);
-        apr_brigade_flatten(formPair->value, buffer, &size);
-        buffer[len] = 0;
-        string key = string(formPair->name);
-        string value = string(buffer);
-        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
-        std::transform(value.begin(), value.end(), value.begin(), ::tolower);
-        body.emplace_back(key, value);
-    }
-}
-
-/*
- * Callback function to store each key and value of
- * an apr_table_t into a vector
- */
-int RuntimeScanner::storeTable(void *pVoid, const char *key, const char *value) {
-    vector<pair<const string, const string>>* kvVector = static_cast<vector<pair<const string, const string>>*>(pVoid);
-    string keyLower = string(key);
-    string valueLower = string(value);
-    std::transform(keyLower.begin(), keyLower.end(), keyLower.begin(), ::tolower);
-    std::transform(valueLower.begin(), valueLower.end(), valueLower.begin(), ::tolower);
-    kvVector->emplace_back(keyLower, valueLower);
-    return 1; // Zero would stop iterating; any other return value continues
-}
-
-string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string& name, const string& value, bool targetName) {
+string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string &name,
+                                   const string &value, bool targetName) {
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
@@ -81,7 +24,7 @@ string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MA
     return ss.str();
 }
 
-void RuntimeScanner::applyCheckRuleAction(const rule_action_t& action) {
+void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
     if (action == BLOCK)
         block = true;
     else if (action == DROP)
@@ -92,7 +35,8 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t& action) {
         log = true;
 }
 
-void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const string& name, const string& value, enum MATCH_ZONE zone, bool targetName) {
+void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
+                                    enum MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
         cerr << Util::formatLog(DEFLOG_WARN, r->useragent_ip);
         cerr << KGRN "✓ Rule #" << rule.id << " ";
@@ -108,9 +52,9 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
         nbMatch = 1;
     for (const pair<string, int> &tagScore : rule.scores) {
         bool matched = false;
-        int& score = matchScores[tagScore.first];
+        int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
-        check_rule_t& checkRule = parser.checkRules[tagScore.first];
+        check_rule_t &checkRule = parser.checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL)
             matched = (score >= checkRule.limit);
         else if (checkRule.comparator == SUP)
@@ -159,13 +103,13 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
 }
 
 void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, const string &value,
-                                    const vector<http_rule_t*> &rules) {
+                                    const vector<http_rule_t *> &rules) {
     if (scfg->libinjection)
         checkLibInjection(zone, name, value);
 
     int nbMatch = 0;
     for (int i = 0; i < rules.size() && ((!block || scfg->learning) && !drop); i++) {
-        const http_rule_t& rule = *rules[i];
+        const http_rule_t &rule = *rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 
         /* does the rule have a custom location ? custom location means checking only on a specific argument */
@@ -175,7 +119,7 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
             for (const custom_rule_location_t &loc : rule.br->customLocations) {
                 /* check if the custom location zone match with the current zone (enhancement) */
                 if (!((loc.bodyVar && zone == BODY) || (loc.argsVar && zone == ARGS) ||
-                        (loc.headersVar && zone == HEADERS) || (loc.specificUrl && zone == URL))) {
+                      (loc.headersVar && zone == HEADERS) || (loc.specificUrl && zone == URL))) {
                     DEBUG_RUNTIME_BRS("loc-zone-mismatch ");
                     continue;
                 }
@@ -203,8 +147,8 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
         ** the zone the rule is meant to be check against
         */
         if ((zone == HEADERS && rule.br->headersMz) || (zone == URL && rule.br->urlMz) ||
-             (zone == ARGS && rule.br->argsMz) || (zone == BODY && rule.br->bodyMz) ||
-                    (zone == FILE_EXT && rule.br->fileExtMz)) {
+            (zone == ARGS && rule.br->argsMz) || (zone == BODY && rule.br->bodyMz) ||
+            (zone == FILE_EXT && rule.br->fileExtMz)) {
             DEBUG_RUNTIME_BRS("zone ");
             /* check the rule against the value*/
             if (processRuleBuffer(value, rule, nbMatch)) {
@@ -224,22 +168,21 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
     }
 }
 
-void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string& name, const string& value) {
+void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string &name, const string &value) {
     if (value.empty() && name.empty())
         return;
-    char* valuecstr = NULL;
+    char *valuecstr = NULL;
     size_t valuelen = 0;
-    char* namecstr = NULL;
+    char *namecstr = NULL;
     size_t namelen = 0;
     if (!value.empty()) {
-        valuecstr = apr_pstrdup(pool, value.c_str());
+        valuecstr = strdup(value.c_str());
         valuelen = strlen(value.c_str());
     }
     if (!name.empty()) {
-        namecstr = apr_pstrdup(pool, value.c_str());
+        namecstr = strdup(value.c_str());
         namelen = strlen(value.c_str());
     }
-
 
     if (scfg->libinjection_sql) {
         struct libinjection_sqli_state state;
@@ -248,7 +191,7 @@ void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string& name,
             libinjection_sqli_init(&state, valuecstr, valuelen, FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
-                http_rule_t& libsqlirule = parser.internalRules[17];
+                http_rule_t &libsqlirule = parser.internalRules[17];
                 libsqlirule.logMsg = state.fingerprint;
                 applyCheckRule(libsqlirule, 1, name, value, zone, false);
             }
@@ -258,7 +201,7 @@ void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string& name,
             libinjection_sqli_init(&state, namecstr, namelen, FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
-                http_rule_t& libsqlirule = parser.internalRules[17];
+                http_rule_t &libsqlirule = parser.internalRules[17];
                 libsqlirule.logMsg = state.fingerprint;
                 applyCheckRule(libsqlirule, 1, name, value, zone, true);
             }
@@ -267,36 +210,88 @@ void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string& name,
 
     if (scfg->libinjection_xss) {
         if (valuecstr && libinjection_xss(valuecstr, valuelen)) {
-            http_rule_t& libxssrule = parser.internalRules[18];
+            http_rule_t &libxssrule = parser.internalRules[18];
             applyCheckRule(libxssrule, 1, name, value, zone, false);
         }
 
         if (namecstr && libinjection_xss(namecstr, namelen)) {
-            http_rule_t& libxssrule = parser.internalRules[18];
+            http_rule_t &libxssrule = parser.internalRules[18];
             applyCheckRule(libxssrule, 1, name, value, zone, true);
         }
     }
 }
 
-int RuntimeScanner::runHandler() {
-    int returnVal = DECLINED;
+int RuntimeScanner::postReadRequest(request_rec *rec) {
+    r = rec;
 
-    for (const pair<const string, const string>& pair : headers) {
-        basestrRuleset(HEADERS, pair.first, pair.second, parser.headerRules);
-    }
-    for (const pair<const string, const string>& pair : args) {
-        basestrRuleset(ARGS, pair.first, pair.second, parser.getRules);
-    }
-    if (r->method_number == M_POST || r->method_number == M_PUT) {
-        for (const pair<const string, const string> &pair : body) {
-            basestrRuleset(BODY, pair.first, pair.second, parser.bodyRules);
+    /* Store every HTTP header received */
+    const apr_array_header_t *headerFields = apr_table_elts(r->headers_in);
+    apr_table_entry_t *headerEntry = (apr_table_entry_t *) headerFields->elts;
+    for (int i = 0; i < headerFields->nelts; i++) {
+//        cerr << headerEntry[i].key << " " << headerEntry[i].val << endl;
+        string key = string(headerEntry[i].key);
+        string val = string(headerEntry[i].val);
+        transform(key.begin(), key.end(), key.begin(), ::tolower);
+        transform(val.begin(), val.end(), val.begin(), ::tolower);
+        /* Store content-type for further processing */
+        if (key == "content-type") {
+            contentType = string(val);
         }
+        basestrRuleset(HEADERS, key, val, parser.headerRules);
     }
+
+    /* Retrieve GET parameters */
+    apr_table_t *getTable = NULL;
+    ap_args_to_table(r, &getTable);
+    const apr_array_header_t *getParams = apr_table_elts(getTable);
+    apr_table_entry_t *getParam = (apr_table_entry_t *) getParams->elts;
+    for (int i = 0; i < getParams->nelts; i++) {
+//        cerr << getParam[i].key << " " << getParam[i].val << endl;
+        string key = string(getParam[i].key);
+        string val = string(getParam[i].val);
+        transform(key.begin(), key.end(), key.begin(), ::tolower);
+        transform(val.begin(), val.end(), val.begin(), ::tolower);
+        basestrRuleset(ARGS, key, val, parser.getRules);
+    }
+
+    uri = string(r->parsed_uri.path);
+    transform(uri.begin(), uri.end(), uri.begin(), ::tolower);
     basestrRuleset(URL, string(), uri, parser.genericRules);
 
+    if (r->method_number == M_POST || r->method_number == M_PUT)
+        return DECLINED;
+
+    writeLearningLog();
+
+    if (block)
+        return HTTP_FORBIDDEN;
+    return DECLINED;
+}
+
+int RuntimeScanner::processBody() {
+    if (r->method_number == M_POST || r->method_number == M_PUT) {
+        vector<string> bodyPart = Util::split(*rawBody, '&');
+        for (string &part : bodyPart) {
+            pair<string, string> kv = Util::kvSplit(part, '=');
+            transform(kv.first.begin(), kv.first.end(), kv.first.begin(), ::tolower);
+            transform(kv.second.begin(), kv.second.end(), kv.second.begin(), ::tolower);
+//            cerr << kv.first << ":" << kv.second << endl;
+            basestrRuleset(BODY, kv.first, kv.second, parser.bodyRules);
+        }
+    }
+
+    writeLearningLog();
+
+    if (block) {
+        return HTTP_FORBIDDEN;
+    }
+    return DECLINED;
+}
+
+void RuntimeScanner::writeLearningLog() {
     if (scfg->learning && rulesMatchedCount > 0) {
-        std::time_t tt = system_clock::to_time_t (system_clock::now());
-        std::tm * ptm = std::localtime(&tt);
+        std::time_t tt = system_clock::to_time_t(system_clock::now());
+        std::tm *ptm = std::localtime(&tt);
         stringstream errlog;
         errlog << std::put_time(ptm, "%Y/%m/%d %T") << " ";
         errlog << "[error] ";
@@ -309,7 +304,7 @@ int RuntimeScanner::runHandler() {
         errlog << "block=" << block << "&";
 
         int i = 0;
-        for (const auto& match : matchScores) {
+        for (const auto &match : matchScores) {
             errlog << "cscore" << i << "=" << match.first << "&";
             errlog << "score" << i << "=" << match.second << "&";
             i++;
@@ -327,13 +322,8 @@ int RuntimeScanner::runHandler() {
         errlog << endl;
 
         const string tmp = errlog.str();
-        const char* cstr = tmp.c_str();
+        const char *cstr = tmp.c_str();
         apr_size_t cstrlen = strlen(cstr);
         apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
     }
-
-    if (block)
-        returnVal = HTTP_FORBIDDEN;
-
-    return returnVal;
 }

@@ -1,6 +1,7 @@
 #ifndef MOD_DEFENDER_UTIL_H
 #define MOD_DEFENDER_UTIL_H
 
+#include <vector>
 #include <algorithm>
 #include <functional>
 #include <cctype>
@@ -75,6 +76,7 @@ public:
     }
     static string apacheTimeFmt();
     static string formatLog(DEF_LOGLEVEL loglevel, char *client);
+    static pair<string, string> kvSplit(const string &s, char delim);
 };
 
 

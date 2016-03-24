@@ -39,6 +39,19 @@ pair<string, string> Util::splitAtFirst(const string &s, string delim) {
     return p;
 }
 
+pair<string, string> Util::kvSplit(const string &s, char delim) {
+    pair<string, string> p;
+    unsigned long delimpos = s.find(delim);
+    if (s.length() > 0 && delimpos >= s.length()) {
+        p.first = s;
+    }
+    else {
+        p.first = s.substr(0, delimpos);
+        p.second = s.substr(delimpos + 1, s.size());
+    }
+    return p;
+}
+
 string Util::apacheTimeFmt() {
     stringstream ss;
     high_resolution_clock::time_point p = high_resolution_clock::now();
