@@ -1,17 +1,19 @@
 #include "Util.h"
 
-vector<string> Util::split(string &s, char delimiter) {
+vector<string> Util::split(const string &s, char delimiter) {
     vector<string> v;
-    size_t pos = 0;
+    size_t last = 0;
+    size_t next = 0;
     string token;
-    while ((pos = s.find(delimiter)) != string::npos) {
-        token = s.substr(0, pos);
-        if (token.size() > 0)
+    while ((next = s.find(delimiter, last)) != string::npos) {
+        token = s.substr(last, next-last);
+        if (!token.empty())
             v.push_back(token);
-//        s.erase(0, pos + delimiter.length());
-        s.erase(0, pos + 1);
+        last = next + 1;
     }
-    v.push_back(s);
+    token = s.substr(last);
+    if (!token.empty())
+        v.push_back(token);
 
     return v;
 }

@@ -62,7 +62,7 @@ public:
         return ltrim(rtrim(s));
     }
 
-    static vector<string> split(string &s, char delim);
+    static vector<string> split(const string &s, char delim);
     static pair<string, string> splitAtFirst(const string &s, string delim);
     static vector<int> splitToInt(string &s, char delimiter);
     static int countSubstring(const string &str, const string &sub) {
