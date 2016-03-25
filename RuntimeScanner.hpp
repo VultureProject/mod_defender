@@ -40,6 +40,13 @@ using std::distance;
 using std::unordered_map;
 using std::transform;
 
+enum CONTENT_TYPE {
+    URL_ENC = 0, // application/x-www-form-urlencoded
+    FORM_DATA, // amultipart/form-data
+    APP_JSON, // application/json
+    UNSUPPORTED
+};
+
 class RuntimeScanner {
 private:
     request_rec* r;
@@ -58,9 +65,10 @@ private:
     bool log = false;
 
 public:
-    string contentType;
+    enum CONTENT_TYPE contentType = UNSUPPORTED;
     string* rawBody = nullptr;
 
+    virtual ~RuntimeScanner();
     RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser) {}
     int postReadRequest(request_rec *rec);
     void applyCheckRuleAction(const rule_action_t &action);

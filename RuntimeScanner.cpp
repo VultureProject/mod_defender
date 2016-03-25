@@ -235,7 +235,15 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         transform(val.begin(), val.end(), val.begin(), ::tolower);
         /* Store content-type for further processing */
         if (key == "content-type") {
-            contentType = string(val);
+            if (val == "application/x-www-form-urlencoded") {
+                contentType = URL_ENC;
+            }
+            else if (val == "multipart/form-data") {
+                contentType = FORM_DATA;
+            }
+            else if (val == "application/json") {
+                contentType = APP_JSON;
+            }
         }
         basestrRuleset(HEADERS, key, val, parser.headerRules);
     }
@@ -269,7 +277,13 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
 }
 
 int RuntimeScanner::processBody() {
-    if (r->method_number == M_POST || r->method_number == M_PUT) {
+    /* Process only if POST / PUT request */
+    if (r->method_number != M_POST && r->method_number != M_PUT) {
+        return DECLINED;
+    }
+
+    /* If Content-Type: application/x-www-form-urlencoded */
+    if (contentType == URL_ENC) {
         vector<string> bodyPart = Util::split(*rawBody, '&');
         for (string &part : bodyPart) {
             pair<string, string> kv = Util::kvSplit(part, '=');
@@ -326,4 +340,8 @@ void RuntimeScanner::writeLearningLog() {
         apr_size_t cstrlen = strlen(cstr);
         apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
     }
+}
+
+RuntimeScanner::~RuntimeScanner() {
+    delete rawBody;
 }
