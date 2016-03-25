@@ -5,8 +5,12 @@
 
 extern module AP_MODULE_DECLARE_DATA defender_module;
 
+/* Custom definition to hold any configuration data we may need. */
+typedef struct {
+    RuntimeScanner *vpRuntimeScanner;
+} defender_config_t;
+
 static RuleParser *parser = nullptr;
-static RuntimeScanner *runtimeScanner = nullptr;
 
 static vector<string> *tmpMainRules;
 static vector<string> *tmpBasicRules;
@@ -55,7 +59,7 @@ static int post_read_request(request_rec *r) {
     if (parser == nullptr)
         return HTTP_SERVICE_UNAVAILABLE;
 
-    runtimeScanner = new RuntimeScanner(scfg, *parser);
+    RuntimeScanner* runtimeScanner = new RuntimeScanner(scfg, *parser);
 
     if (runtimeScanner == nullptr)
         return HTTP_SERVICE_UNAVAILABLE;
@@ -64,6 +68,16 @@ static int post_read_request(request_rec *r) {
        at the end of the request cycle. */
     apr_pool_cleanup_register(r->pool, (void *) runtimeScanner, defender_delete_runtimescanner_object,
                               apr_pool_cleanup_null);
+
+    /* Reserve a temporary memory block from the
+       request pool to store data between hooks. */
+    defender_config_t *pDefenderConfig = (defender_config_t *) apr_palloc(r->pool, sizeof(defender_config_t));
+
+    /* Remember our application pointer for future calls. */
+    pDefenderConfig->vpRuntimeScanner = runtimeScanner;
+
+    /* Register our config data structure for our module for retrieval later as required */
+    ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
 
     /* Run our application handler. */
     return runtimeScanner->postReadRequest(r);
@@ -80,6 +94,19 @@ static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
 static int fixer_upper(request_rec *r) {
     /* Stop if this is not the main request */
     if ((r->main != NULL) || (r->prev != NULL)) {
+        return DECLINED;
+    }
+
+    /* Process only if POST / PUT request */
+    if (r->method_number != M_POST && r->method_number != M_PUT) {
+        return DECLINED;
+    }
+
+    defender_config_t *defc = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
+    RuntimeScanner* runtimeScanner = defc->vpRuntimeScanner;
+
+    /* Check if supported Content-Type */
+    if (runtimeScanner->contentType != URL_ENC) {
         return DECLINED;
     }
 
@@ -134,6 +161,9 @@ static int fixer_upper(request_rec *r) {
         apr_brigade_cleanup(bb_in);
     } while (!eos);
 
+//    cerr << *runtimeScanner->rawBody << endl;
+//    cerr << runtimeScanner->rawBody->length() << endl;
+
     return runtimeScanner->processBody();
 }
 
@@ -143,12 +173,22 @@ static int input_filter(ap_filter_t *f, apr_bucket_brigade *bb_out,
         return ap_get_brigade(f->next, bb_out, mode, block, nbytes);
     }
 
-    /* Forward the body */
-    apr_bucket *bucket = apr_bucket_heap_create(runtimeScanner->rawBody->c_str(), runtimeScanner->rawBody->length(), NULL,
-                                                f->r->connection->bucket_alloc);
-    delete runtimeScanner->rawBody;
-    APR_BRIGADE_INSERT_TAIL(bb_out, bucket);
+    defender_config_t *defc = (defender_config_t *) ap_get_module_config(f->r->request_config, &defender_module);
+    RuntimeScanner* runtimeScanner = defc->vpRuntimeScanner;
+
+    /* Remove the input filter */
     ap_remove_input_filter(f);
+
+    /* Check if there is something to forward */
+    if (runtimeScanner->rawBody == nullptr || runtimeScanner->rawBody->empty()) {
+        return APR_SUCCESS;
+    }
+
+    /* Forward the body */
+    apr_bucket *bucket = apr_bucket_heap_create(runtimeScanner->rawBody->c_str(), runtimeScanner->rawBody->length(),
+                                                NULL, f->r->connection->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(bb_out, bucket);
+
     return APR_SUCCESS;
 }
 
