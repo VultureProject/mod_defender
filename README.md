@@ -3,24 +3,20 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 
 ### Dependencies
 * apache2-dev package to provide Apache Extension Tool and Apache2 headers
+* libcurl-dev virtual package to provide curl.h
 * gcc & g++ >= 5.2
 * CMake >= 3.2
 
 ### Installation
-1. You need apache2-dev package installed	
+1. Install dependencies
 	```sh
-	$ sudo apt-get install apache2-dev
+	$ sudo apt-get install apache2-dev libcurl-dev
 	```
 
 1. Compile the source
 	```sh
 	$ cmake .
 	$ make 
-	```
-
-1. Use Apache Extension Tool to install the module
-	```sh
-	$ sudo apxs -n defender -i lib/mod_defender.so
 	```
 
 1. Create its module load file for Apache2
