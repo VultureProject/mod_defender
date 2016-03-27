@@ -16,6 +16,9 @@ set(SOURCE_FILES mod_defender.cpp mod_defender.hpp RuntimeScanner.cpp RuntimeSca
         RuleParser.cpp RuleParser.h Util.cpp Util.h)
 add_library(mod_defender SHARED ${SOURCE_FILES})
 
+find_package(CURL)
+target_link_libraries(mod_defender ${CURL_LIBRARIES})
+
 set(RELOAD_APACHE_CMD sudo service apache2 restart)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
