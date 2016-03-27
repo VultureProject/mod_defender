@@ -27,7 +27,7 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
             DEBUG_CONF_MR("negative ");
             i++;
         }
-        pair<string, string> matchPatern = Util::splitAtFirst(rulesArray[i], ":");
+        pair<string, string> matchPatern = splitAtFirst(rulesArray[i], ":");
         if (matchPatern.first == "rx") {
             try {
                 rule->br->rx = new regex(matchPatern.second, std::regex::optimize);
@@ -50,9 +50,9 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
         parseMatchZone(*rule, rawMatchZone);
 
         string score = rulesArray[i + 3].substr(2);
-        vector<string> scores = Util::split(score, ',');
+        vector<string> scores = split(score, ',');
         for (const string &sc : scores) {
-            pair<string, string> scorepair = Util::splitAtFirst(sc, ":");
+            pair<string, string> scorepair = splitAtFirst(sc, ":");
             rule->scores.emplace_back(scorepair.first, std::stoi(scorepair.second));
             DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
         }
@@ -97,9 +97,9 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
 const char* RuleParser::parseCheckRule(apr_pool_t* pool, string equation, string action) {
     DEBUG_CONF_CR("CheckRule ");
     check_rule_t chkrule;
-    vector<string> eqParts = Util::split(equation, ' ');
+    vector<string> eqParts = split(equation, ' ');
 
-    string tag = Util::rtrim(eqParts[0]);
+    string tag = rtrim(eqParts[0]);
     DEBUG_CONF_CR(tag << " ");
 
     if (eqParts[1] == ">=") {
@@ -158,7 +158,7 @@ void RuleParser::parseBasicRules(vector<string> rulesArray) {
         rule.type = BASIC_RULE;
         string rawWhitelist = rulesArray[i].substr(3);
         rule.whitelist = true;
-        rule.wlIds = Util::splitToInt(rawWhitelist, ',');
+        rule.wlIds = splitToInt(rawWhitelist, ',');
         for (const int &id : rule.wlIds) {
             DEBUG_CONF_BR(id << " ");
         }
@@ -183,7 +183,7 @@ void RuleParser::parseBasicRules(vector<string> rulesArray) {
 }
 
 void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
-    vector<string> matchZones = Util::split(rawMatchZone, '|');
+    vector<string> matchZones = split(rawMatchZone, '|');
     for (const string &mz : matchZones) {
         if (mz[0] != '$') {
             if (mz == "ARGS") {
@@ -215,7 +215,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
         else {
             custom_rule_location_t customRule;
             rule.br->customLocation = true;
-            pair<string, string> cmz = Util::splitAtFirst(mz, ":");
+            pair<string, string> cmz = splitAtFirst(mz, ":");
 
             if (cmz.first == "$ARGS_VAR") {
                 customRule.argsVar = true;
@@ -264,7 +264,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             }
 
             if (!rule.br->rxMz) { // String MatchZone
-                std::transform(cmz.second.begin(), cmz.second.end(), cmz.second.begin(), ::tolower);
+                std::transform(cmz.second.begin(), cmz.second.end(), cmz.second.begin(), tolower);
                 customRule.target = cmz.second;
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
             }
@@ -600,7 +600,7 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
     if (!wlUrlHash.empty()) {
         /* mimic find_wl_in_hash, we are looking in a different hashtable */
         string hashname = string(uri);
-        std::transform(hashname.begin(), hashname.end(), hashname.begin(), ::tolower);
+        std::transform(hashname.begin(), hashname.end(), hashname.begin(), tolower);
         DEBUG_CONF_WL("hashing uri [" << hashname << "] (rule:" << rule.id << ") 'wl:$URI:" << hashname << "|*'");
 
         unordered_map<string, whitelist_rule_t>::const_iterator it = wlUrlHash.find(hashname);

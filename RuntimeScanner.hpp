@@ -26,6 +26,7 @@
 #define DEBUG_RUNTIME_BRS(x)
 #endif
 
+using namespace Util;
 using std::chrono::system_clock;
 using std::pair;
 using std::vector;

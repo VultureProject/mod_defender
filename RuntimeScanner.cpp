@@ -13,7 +13,7 @@ string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MA
     ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
     ss << "var_name" << rulesMatchedCount << "=" << name;
 
-    cerr << Util::formatLog(DEFLOG_ERROR, r->useragent_ip);
+    cerr << formatLog(DEFLOG_ERROR, r->useragent_ip);
     cerr << KRED "⚠ Rule #" << rule.id << " ";
     cerr << "(" << rule.logMsg << ") ";
     cerr << "matched " << nbMatch << " times ";
@@ -38,7 +38,7 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
                                     enum MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
-        cerr << Util::formatLog(DEFLOG_WARN, r->useragent_ip);
+        cerr << formatLog(DEFLOG_WARN, r->useragent_ip);
         cerr << KGRN "✓ Rule #" << rule.id << " ";
         cerr << "(" << rule.logMsg << ") ";
         cerr << "whitelisted ";
@@ -90,7 +90,7 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
     }
     else if (!rl.br->str.empty()) {
         DEBUG_RUNTIME_PR(" ? " << rl.br->str << "] ");
-        nbMatch = Util::countSubstring(str, rl.br->str);
+        nbMatch = countSubstring(str, rl.br->str);
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
             return !rl.br->negative;
@@ -228,11 +228,11 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
     const apr_array_header_t *headerFields = apr_table_elts(r->headers_in);
     apr_table_entry_t *headerEntry = (apr_table_entry_t *) headerFields->elts;
     for (int i = 0; i < headerFields->nelts; i++) {
-//        cerr << headerEntry[i].key << " " << headerEntry[i].val << endl;
+//        cerr << headerEntry[i].key << ":" << headerEntry[i].val << endl;
         string key = string(headerEntry[i].key);
         string val = string(headerEntry[i].val);
-        transform(key.begin(), key.end(), key.begin(), ::tolower);
-        transform(val.begin(), val.end(), val.begin(), ::tolower);
+        transform(key.begin(), key.end(), key.begin(), tolower);
+        transform(val.begin(), val.end(), val.begin(), tolower);
         /* Store content-type for further processing */
         if (key == "content-type") {
             if (val == "application/x-www-form-urlencoded") {
@@ -254,16 +254,16 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
     const apr_array_header_t *getParams = apr_table_elts(getTable);
     apr_table_entry_t *getParam = (apr_table_entry_t *) getParams->elts;
     for (int i = 0; i < getParams->nelts; i++) {
-//        cerr << getParam[i].key << " " << getParam[i].val << endl;
+//        cerr << getParam[i].key << ":" << getParam[i].val << endl;
         string key = string(getParam[i].key);
         string val = string(getParam[i].val);
-        transform(key.begin(), key.end(), key.begin(), ::tolower);
-        transform(val.begin(), val.end(), val.begin(), ::tolower);
+        transform(key.begin(), key.end(), key.begin(), tolower);
+        transform(val.begin(), val.end(), val.begin(), tolower);
         basestrRuleset(ARGS, key, val, parser.getRules);
     }
 
     uri = string(r->parsed_uri.path);
-    transform(uri.begin(), uri.end(), uri.begin(), ::tolower);
+    transform(uri.begin(), uri.end(), uri.begin(), tolower);
     basestrRuleset(URL, string(), uri, parser.genericRules);
 
     if (r->method_number == M_POST || r->method_number == M_PUT)
@@ -284,11 +284,14 @@ int RuntimeScanner::processBody() {
 
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
-        vector<string> bodyPart = Util::split(*rawBody, '&');
+        /* URL Decode the whole body */
+        *rawBody = urlDecode(*rawBody);
+        /* String to lower the whole body */
+        transform(rawBody->begin(), rawBody->end(), rawBody->begin(), tolower);
+
+        vector<string> bodyPart = split(*rawBody, '&');
         for (string &part : bodyPart) {
-            pair<string, string> kv = Util::kvSplit(part, '=');
-            transform(kv.first.begin(), kv.first.end(), kv.first.begin(), ::tolower);
-            transform(kv.second.begin(), kv.second.end(), kv.second.begin(), ::tolower);
+            pair<string, string> kv = kvSplit(part, '=');
 //            cerr << kv.first << ":" << kv.second << endl;
             basestrRuleset(BODY, kv.first, kv.second, parser.bodyRules);
         }
@@ -336,9 +339,9 @@ void RuntimeScanner::writeLearningLog() {
         errlog << endl;
 
         const string tmp = errlog.str();
-        const char *cstr = tmp.c_str();
-        apr_size_t cstrlen = strlen(cstr);
-        apr_file_write(scfg->errorlog_fd, cstr, &cstrlen);
+        const char *szStr = tmp.c_str();
+        apr_size_t szStrlen = strlen(szStr);
+        apr_file_write(scfg->errorlog_fd, szStr, &szStrlen);
     }
 }
 

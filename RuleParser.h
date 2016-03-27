@@ -61,6 +61,7 @@
 #define DEBUG_CONF_WL(x)
 #endif
 
+using namespace Util;
 using std::pair;
 using std::vector;
 using std::string;
