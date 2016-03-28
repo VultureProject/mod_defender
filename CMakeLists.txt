@@ -25,10 +25,31 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
     set(RELOAD_APACHE_CMD sudo service apache24 restart)
 endif()
 
+set(DEF_DIR /etc/moddefender)
+set(AP_MODS_AV /etc/apache2/mods-available)
+set(AP_MODS_DIR /usr/lib/apache2/modules)
+
 add_custom_command(
         TARGET mod_defender
         POST_BUILD
-        COMMAND cat ${CMAKE_CURRENT_SOURCE_DIR}/lib/sudo_pass | sudo -S apxs -n defender -i ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so
+        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so ${AP_MODS_DIR}
+        COMMAND sudo /etc/init.d/apache2 restart
+        COMMENT "Copying module then restarting Apache")
+
+install(SCRIPT "${CMAKE_SOURCE_DIR}/Install.cmake")
+install(FILES ${CMAKE_BINARY_DIR}/defender.conf DESTINATION ${AP_MODS_AV})
+install(FILES ${CMAKE_BINARY_DIR}/defender.load DESTINATION ${AP_MODS_AV})
+install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${DEF_DIR})")
+install(FILES ${CMAKE_BINARY_DIR}/core_rules.conf DESTINATION ${DEF_DIR})
+install(FILES ${CMAKE_SOURCE_DIR}/conf/moddefender.conf DESTINATION ${DEF_DIR})
+#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so DESTINATION ${AP_MODS_DIR})s
+install(CODE "execute_process(COMMAND apxs -n defender -i ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so)")
+install(CODE "execute_process(COMMAND a2enmod defender)")
+install(CODE "execute_process(COMMAND ${RELOAD_APACHE_CMD})")
+
+add_custom_target(uninstall
+        COMMAND xargs rm < install_manifest.txt
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${DEF_DIR}
+        COMMAND a2dismod defender
         COMMAND ${RELOAD_APACHE_CMD}
-        COMMENT "Running APXS then reloading Apache"
-)
+        COMMENT "Uninstalling... Removing files, disabling module then restarting Apache")
