@@ -233,7 +233,13 @@ public:
     unordered_map<string, whitelist_rule_t> wlBodyHash; // hash table of whitelisted BODY rules
     unordered_map<string, whitelist_rule_t> wlHeadersHash; // hash table of whitelisted HEADERS rules
     vector<http_rule_t> disabled_rules; // rules that are globally disabled in one location
-    unordered_map<int, http_rule_t> internalRules;
+    http_rule_t uncommonHexEncoding;
+    http_rule_t uncommonContentType;
+    http_rule_t uncommonUrl;
+    http_rule_t uncommonPostFormat;
+    http_rule_t uncommonPostBoundary;
+    http_rule_t libsqliRule;
+    http_rule_t libxssRule;
 
     RuleParser();
     void parseMainRules(vector<string> rulesArray);
@@ -242,7 +248,7 @@ public:
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     void generateHashTables();
     void wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx);
-    void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
+    void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, MATCH_ZONE &zone, int &uriIndex, int &name_idx);
     bool checkIds(int matchId, const vector<int> &wlIds);
     bool findWlInHash(whitelist_rule_t &wlRule, const string &key, MATCH_ZONE zone);
     bool isRuleWhitelisted(const http_rule_t &rule, const string& uri, const string &name, MATCH_ZONE zone, bool targetName);

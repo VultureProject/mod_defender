@@ -3,15 +3,26 @@
 
 RuleParser::RuleParser() {
     /* Internal rules */
-    http_rule_t libsqli;
-    libsqli.id = 17;
-    libsqli.scores.emplace_back("$SQL", 8);
-    internalRules[17] = libsqli;
+    uncommonHexEncoding.id = 10;
+    uncommonHexEncoding.logMsg = "Uncommon hex encoding";
 
-    http_rule_t libxss;
-    libxss.id = 18;
-    libxss.scores.emplace_back("$XSS", 8);
-    internalRules[18] = libxss;
+    uncommonContentType.id = 11;
+    uncommonContentType.logMsg = "Uncommon content type";
+
+    uncommonUrl.id = 12;
+    uncommonUrl.logMsg = "Uncommon url";
+
+    uncommonPostFormat.id = 13;
+    uncommonPostFormat.logMsg = "Uncommon post format";
+
+    uncommonPostBoundary.id = 14;
+    uncommonPostBoundary.logMsg = "Uncommon post boundary";
+
+    libsqliRule.id = 17;
+    libsqliRule.scores.emplace_back("$SQL", 8);
+
+    libxssRule.id = 18;
+    libxssRule.scores.emplace_back("$XSS", 8);
 }
 
 void RuleParser::parseMainRules(vector<string> rulesArray) {
@@ -285,7 +296,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
 
 /* check rule, returns associed zone, as well as location index.
   location index refers to $URL:bla or $ARGS_VAR:bla */
-void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx) {
+void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uriIndex, int &nameIndex) {
     if (curr.br->bodyMz || curr.br->bodyVarMz)
         zone = BODY;
     else if (curr.br->headersMz || curr.br->headersVarMz)
@@ -300,56 +311,54 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int
     for (int i = 0; i < curr.br->customLocations.size(); i++) {
         const custom_rule_location_t &loc = curr.br->customLocations[i];
         if (loc.specificUrl) {
-            uri_idx = i;
+            uriIndex = i;
         }
         if (loc.bodyVar) {
-            if (name_idx != -1) {
+            if (nameIndex != -1) {
                 DEBUG_CONF_HT("whitelist can't target more than one BODY item.");
                 return;
             }
-            name_idx = i;
+            nameIndex = i;
             zone = BODY;
         }
         if (loc.headersVar) {
-            if (name_idx != -1) {
+            if (nameIndex != -1) {
                 DEBUG_CONF_HT("whitelist can't target more than one HEADERS item.");
                 return;
             }
-            name_idx = i;
+            nameIndex = i;
             zone = HEADERS;
         }
         if (loc.argsVar) {
-            if (name_idx != -1) {
+            if (nameIndex != -1) {
                 DEBUG_CONF_HT("whitelist can't target more than one ARGS item.");
                 return;
             }
-            name_idx = i;
+            nameIndex = i;
             zone = ARGS;
         }
     }
 }
 
-void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum MATCH_ZONE &zone, int &uri_idx,
-                         int &name_idx) {
+void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, enum MATCH_ZONE &zone, int &uriIndex,
+                         int &nameIndex) {
     string fullname = "";
     /* if WL targets variable name instead of content, prefix hash with '#' */
     if (curr.br->targetName) {
         DEBUG_CONF_WLRF("whitelist targets |NAME");
         fullname += "#";
     }
-    if (uri_idx != -1 && name_idx != -1) { // name AND uri
+    if (uriIndex != -1 && nameIndex != -1) { // name AND uri
         DEBUG_CONF_WLRF("whitelist has uri + name");
-        fullname += curr.br->customLocations[uri_idx].target;
-        fullname += "#";
-        fullname += curr.br->customLocations[name_idx].target;
+        fullname += curr.br->customLocations[uriIndex].target + "#" + curr.br->customLocations[nameIndex].target;
     }
-    else if (uri_idx != -1) { // only uri
+    else if (uriIndex != -1) { // only uri
         DEBUG_CONF_WLRF("whitelist has uri");
-        fullname += curr.br->customLocations[uri_idx].target;
+        fullname += curr.br->customLocations[uriIndex].target;
     }
-    else if (name_idx != -1) { // only name
+    else if (nameIndex != -1) { // only name
         DEBUG_CONF_WLRF("whitelist has name");
-        fullname += curr.br->customLocations[name_idx].target;
+        fullname += curr.br->customLocations[nameIndex].target;
     }
     else {
         DEBUG_CONF_WLRF("wlrFind problem");
@@ -372,7 +381,7 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
     father_wlr.zone = zone;
     /* If there is URI and no name idx, specify it,
 	 so that WL system won't get fooled by an argname like an URL */
-    if (uri_idx != -1 && name_idx == -1)
+    if (uriIndex != -1 && nameIndex == -1)
         father_wlr.uriOnly = true;
     if (curr.br->targetName) // If targetName is present in son, report it
         father_wlr.targetName = curr.br->targetName;
@@ -393,7 +402,7 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
 */
 void RuleParser::generateHashTables() {
     for (http_rule_t &curr_r : whitelistRules) {
-        int uri_idx = -1, name_idx = -1;
+        int uriIndex = -1, nameIndex = -1;
         enum MATCH_ZONE zone = UNKNOWN;
 
         /* no custom location at all means that the rule is disabled */
@@ -401,7 +410,7 @@ void RuleParser::generateHashTables() {
             disabled_rules.push_back(curr_r);
             continue;
         }
-        wlrIdentify(curr_r, zone, uri_idx, name_idx);
+        wlrIdentify(curr_r, zone, uriIndex, nameIndex);
         curr_r.br->zone = zone;
 
         /*
@@ -424,7 +433,7 @@ void RuleParser::generateHashTables() {
         ** Handle static match-zones for hashtables
         */
         whitelist_rule_t father_wl;
-        wlrFind(curr_r, father_wl, zone, uri_idx, name_idx);
+        wlrFind(curr_r, father_wl, zone, uriIndex, nameIndex);
         /* merge the two rules into father_wl, meaning ids. Not locations, as we are getting rid of it */
         father_wl.ids.insert(father_wl.ids.end(), curr_r.wlIds.begin(), curr_r.wlIds.end());
 
@@ -587,8 +596,7 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
         if (found && isWhitelistAdapted(wlRule, name, zone, rule, NAME_ONLY, targetName))
             return true;
 
-        string hashname = "#";
-        hashname += name;
+        string hashname = "#" + name;
         DEBUG_CONF_WL("hashing varname [" << name << "] (rule:" << rule.id << ") - 'wl:X_VAR:" << name << "%V|NAME'");
         found = findWlInHash(wlRule, hashname, zone);
         if (found && isWhitelistAdapted(wlRule, name, zone, rule, NAME_ONLY, targetName))
@@ -621,9 +629,7 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
         return true;
 
     /* Looking $URL:x|ZONE|NAME */
-    string hashname = "#";
-    /* should make it sound crit isn't it ?*/
-    hashname += uri;
+    string hashname = "#" + uri;
     DEBUG_CONF_WL("hashing uri#3 [" << hashname << "] (rule:" << rule.id << ") ($URL:X|ZONE|NAME)");
     found = findWlInHash(wlRule, hashname, zone);
     if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
@@ -634,9 +640,7 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
     if (targetName) {
         hashname += "#";
     }
-    hashname += uri;
-    hashname += "#";
-    hashname += name;
+    hashname += uri + "#" + name;
     DEBUG_CONF_WL("hashing MIX [" << hashname << "] ($URL:x|$X_VAR:y) or ($URL:x|$X_VAR:y|NAME)");
     found = findWlInHash(wlRule, hashname, zone);
     if (found && isWhitelistAdapted(wlRule, name, zone, rule, MIXED, targetName))
