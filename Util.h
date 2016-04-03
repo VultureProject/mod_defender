@@ -1,6 +1,9 @@
 #ifndef MOD_DEFENDER_UTIL_H
 #define MOD_DEFENDER_UTIL_H
 
+#define UNESCAPE_URI       1
+#define UNESCAPE_REDIRECT  2
+
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -47,6 +50,11 @@ static const char *logLevels[] = {
         NULL
 };
 
+typedef struct {
+    size_t      len;
+    u_char     *data;
+} str_t;
+
 namespace Util {
     inline string &ltrim(string &s) { // trim from start
         s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
@@ -85,14 +93,45 @@ namespace Util {
         return p;
     }
 
-    inline string urlDecode(const string &encoded) {
-        CURL *curl = curl_easy_init();
-        int outLength;
-        char *szRes = curl_easy_unescape(curl, encoded.c_str(), encoded.length(), &outLength);
-        string res(szRes, szRes + outLength);
-        curl_free(szRes);
-        curl_easy_cleanup(curl);
-        return res;
+    inline bool caseEqual(const string &str1, const string &str2) {
+        if (str1.size() != str2.size()) {
+            return false;
+        }
+        for (string::const_iterator c1 = str1.begin(), c2 = str2.begin(); c1 != str1.end(); ++c1, ++c2) {
+            if (tolower(*c1) != tolower(*c2)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    int naxsi_unescape_uri(u_char **dst, u_char **src, size_t size, unsigned int type);
+
+    /* unescape routine, returns number of nullbytes present */
+    inline int naxsi_unescape(str_t *str) {
+        u_char *dst, *src;
+        u_int nullbytes = 0, bad = 0, i;
+
+        dst = str->data;
+        src = str->data;
+
+        bad = (u_int) naxsi_unescape_uri(&src, &dst, str->len, 0);
+        str->len = src - str->data;
+        //tmp hack fix, avoid %00 & co (null byte) encoding :p
+        for (i = 0; i < str->len; i++)
+            if (str->data[i] == 0x0) {
+                nullbytes++;
+                str->data[i] = '0';
+            }
+        return (nullbytes + bad);
+    }
+
+    inline char* strnchr(const char *s, int c, int len) {
+        int cpt;
+        for (cpt = 0; cpt < len && s[cpt]; cpt++)
+            if (s[cpt] == c)
+                return ((char *) s + cpt);
+        return (NULL);
     }
 
     vector<string> split(const string &s, char delim);
