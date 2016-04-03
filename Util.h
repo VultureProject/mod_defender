@@ -15,7 +15,6 @@
 #include <chrono>
 #include <sys/types.h>
 #include <unistd.h>
-#include <curl/curl.h>
 
 using std::chrono::system_clock;
 using namespace std::chrono;
