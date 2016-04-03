@@ -43,7 +43,7 @@ using std::transform;
 
 enum CONTENT_TYPE {
     URL_ENC = 0, // application/x-www-form-urlencoded
-    FORM_DATA, // amultipart/form-data
+    MULTIPART, // multipart/form-data
     APP_JSON, // application/json
     UNSUPPORTED
 };
@@ -59,6 +59,7 @@ private:
     vector<pair<const string, const string>> args;
     string uri;
     unordered_map<string, int> matchScores;
+    string rawContentType;
 
     bool block = false;
     bool drop = false;
@@ -79,10 +80,16 @@ public:
     bool processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch);
     void applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
                         MATCH_ZONE zone, bool targetName);
-    string formatMatch(const http_rule_t &rule, int nbMatch, MATCH_ZONE zone, const string &name, const string &value,
-                       bool targetName);
+    void formatMatch(const http_rule_t &rule, int nbMatch, MATCH_ZONE zone, const string &name, const string &value,
+                     bool targetName);
     int processBody();
     void writeLearningLog();
+    bool parseFormDataBoundary(unsigned char **boundary, unsigned long *boundary_len);
+    void multipartParse(u_char *src, unsigned long len);
+    bool contentDispositionParser(unsigned char *str, unsigned char *line_end,
+                                  unsigned char **fvarn_start, unsigned char **fvarn_end,
+                                  unsigned char **ffilen_start, unsigned char **ffilen_end);
+    bool splitUrlEncodedRuleset(char *str, const vector<http_rule_t *> &rules, MATCH_ZONE zone);
 };
 
 #endif /* RUNTIMESCANNER_HPP */

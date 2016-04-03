@@ -2,9 +2,13 @@
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
+#include "Util.h"
 
-string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string &name,
-                                   const string &value, bool targetName) {
+void RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string &name,
+                                 const string &value, bool targetName) {
+    if (!scfg->learning)
+        return;
+
     stringstream ss;
     if (rulesMatchedCount > 0)
         ss << "&";
@@ -21,7 +25,7 @@ string RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MA
         cerr << "in name ";
     cerr << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
 
-    return ss.str();
+    matchVars << ss.str();
 }
 
 void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
@@ -67,8 +71,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
             applyCheckRuleAction(checkRule.action);
     }
 
-    if (scfg->learning)
-        matchVars << formatMatch(rule, nbMatch, zone, name, value, targetName);
+    formatMatch(rule, nbMatch, zone, name, value, targetName);
     rulesMatchedCount++;
 }
 
@@ -171,60 +174,442 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
 void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string &name, const string &value) {
     if (value.empty() && name.empty())
         return;
-    char *valuecstr = NULL;
-    size_t valuelen = 0;
-    char *namecstr = NULL;
-    size_t namelen = 0;
+    char *szValue = NULL;
+    size_t valueLen = 0;
+    char *szName = NULL;
+    size_t nameLen = 0;
     if (!value.empty()) {
-        valuecstr = strdup(value.c_str());
-        valuelen = strlen(value.c_str());
+        szValue = strdup(value.c_str());
+        valueLen = strlen(value.c_str());
     }
     if (!name.empty()) {
-        namecstr = strdup(value.c_str());
-        namelen = strlen(value.c_str());
+        szName = strdup(value.c_str());
+        nameLen = strlen(value.c_str());
     }
 
     if (scfg->libinjection_sql) {
         struct libinjection_sqli_state state;
 
-        if (valuecstr) {
-            libinjection_sqli_init(&state, valuecstr, valuelen, FLAG_NONE);
+        if (szValue) {
+            libinjection_sqli_init(&state, szValue, valueLen, FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
-                http_rule_t &libsqlirule = parser.internalRules[17];
-                libsqlirule.logMsg = state.fingerprint;
-                applyCheckRule(libsqlirule, 1, name, value, zone, false);
+                http_rule_t &sqliRule = parser.libsqliRule;
+                sqliRule.logMsg = state.fingerprint;
+                formatMatch(sqliRule, 1, zone, name, value, false);
             }
         }
 
-        if (namecstr) {
-            libinjection_sqli_init(&state, namecstr, namelen, FLAG_NONE);
+        if (szName) {
+            libinjection_sqli_init(&state, szName, nameLen, FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
-                http_rule_t &libsqlirule = parser.internalRules[17];
-                libsqlirule.logMsg = state.fingerprint;
-                applyCheckRule(libsqlirule, 1, name, value, zone, true);
+                http_rule_t &sqliRule = parser.libsqliRule;
+                sqliRule.logMsg = state.fingerprint;
+                formatMatch(sqliRule, 1, zone, name, value, true);
             }
         }
     }
 
     if (scfg->libinjection_xss) {
-        if (valuecstr && libinjection_xss(valuecstr, valuelen)) {
-            http_rule_t &libxssrule = parser.internalRules[18];
-            applyCheckRule(libxssrule, 1, name, value, zone, false);
+        if (szValue && libinjection_xss(szValue, valueLen)) {
+            formatMatch(parser.libxssRule, 1, zone, name, value, false);
         }
 
-        if (namecstr && libinjection_xss(namecstr, namelen)) {
-            http_rule_t &libxssrule = parser.internalRules[18];
-            applyCheckRule(libxssrule, 1, name, value, zone, true);
+        if (szName && libinjection_xss(szName, nameLen)) {
+            formatMatch(parser.libxssRule, 1, zone, name, value, true);
         }
     }
+}
+
+bool RuntimeScanner::contentDispositionParser(unsigned char *str, unsigned char *line_end,
+                                              unsigned char **fvarn_start, unsigned char **fvarn_end,
+                                              unsigned char **ffilen_start, unsigned char **ffilen_end) {
+    unsigned char *varn_start = NULL, *varn_end = NULL, *filen_start = NULL, *filen_end = NULL;
+    /* we have two cases :
+    ** ---- file upload
+    ** Content-Disposition: form-data; name="somename"; filename="NetworkManager.conf"\r\n
+    ** Content-Type: application/octet-stream\r\n\r\n
+    ** <DATA>
+    ** ---- normal post var
+    ** Content-Disposition: form-data; name="lastname"\r\n\r\n
+    ** <DATA>
+    */
+
+    while (str < line_end) {
+        /* rfc allow spaces and tabs inbetween */
+        while (str < line_end && *str && (*str == ' ' || *str == '\t'))
+            str++;
+        if (str < line_end && *str && *str == ';')
+            str++;
+        while (str < line_end && *str && (*str == ' ' || *str == '\t'))
+            str++;
+
+        if (str >= line_end || !*str)
+            break;
+
+        if (!strncmp((const char *) str, "name=\"", 6)) {
+            /* we already successfully parsed a name, reject that. */
+            if (varn_end || varn_start)
+                return false;
+            varn_end = varn_start = str + 6;
+            do {
+                varn_end = (unsigned char *) strchr((const char *) varn_end, '"');
+                if (!varn_end || (varn_end && *(varn_end - 1) != '\\'))
+                    break;
+                varn_end++;
+            } while (varn_end && varn_end < line_end);
+            if (!varn_end || !*varn_end)
+                return false;
+            str = varn_end;
+            if (str < line_end + 1)
+                str++;
+            else
+                return false;
+            *fvarn_start = varn_start;
+            *fvarn_end = varn_end;
+        }
+        else if (!strncmp((const char *) str, "filename=\"", 10)) {
+            /* we already successfully parsed a filename, reject that. */
+            if (filen_end || filen_start)
+                return false;
+            filen_end = filen_start = str + 10;
+            do {
+                filen_end = (unsigned char *) strchr((const char *) filen_end, '"');
+                if (!filen_end) break;
+                if (*(filen_end - 1) != '\\')
+                    break;
+                filen_end++;
+            } while (filen_end && filen_end < line_end);
+            if (!filen_end)
+                return false;
+            str = filen_end;
+            if (str < line_end + 1)
+                str++;
+            else
+                return false;
+            *ffilen_end = filen_end;
+            *ffilen_start = filen_start;
+        }
+        else if (str == line_end - 1)
+            break;
+        else {
+            /* gargabe is present ?*/
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL,
+                         "extra data in content-disposition ? end:%s, str:%s, diff=%ld", line_end, str, line_end - str);
+            return false;
+        }
+    }
+    return !(filen_end > line_end || varn_end > line_end);
+}
+
+bool RuntimeScanner::parseFormDataBoundary(unsigned char **boundary, unsigned long *boundary_len) {
+    unsigned char *h = (unsigned char *) &rawContentType[20];
+    unsigned char *end = (unsigned char *) &rawContentType[rawContentType.length()];
+
+    /* skip potential whitespace/tabs */
+    while (h < end && *h && (*h == ' ' || *h == '\t'))
+        h++;
+    if (strncmp((const char *) h, "boundary=", 9))
+        return false;
+    h += 9;
+    *boundary_len = end - h;
+    *boundary = h;
+    /* RFC 1867/1341 says 70 char max,
+       I arbitrarily set min to 3 (yes) */
+    return !(*boundary_len > 70 || *boundary_len < 3);
+}
+
+void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
+    str_t final_var, final_data;
+    u_char *boundary, *varn_start, *varn_end;
+    u_char *filen_start, *filen_end;
+    u_char *end, *line_end;
+    unsigned long boundary_len, varn_len, varc_len, idx;
+    int nullbytes;
+
+    /*extract boundary*/
+    if (!parseFormDataBoundary(&boundary, &boundary_len)) {
+        if (boundary && boundary_len > 1)
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-POST boundary : (%s) : %ld", (const char*) boundary, boundary_len);
+        formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", string(), false);
+        block = true;
+        return;
+    }
+
+    /* fetch every line starting with boundary */
+    idx = 0;
+    while (idx < len) {
+        /* if we've reached the last boundary '--' + boundary + '--' + '\r\n'$END */
+        /* Authorize requests that don't have the leading \r\n */
+        if (idx + boundary_len + 6 == len || idx + boundary_len + 4 == len) {
+            if (strncmp((const char*)src + idx, "--", 2) ||
+                strncmp((const char*)src + idx + 2, (const char*)boundary, boundary_len) ||
+                strncmp((const char*)src + idx + boundary_len + 2, "--", 2)) {
+                /* bad closing boundary ?*/
+                formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad closing boundary", (const char*)boundary, false);
+                block = true;
+                return;
+            } else
+                break;
+        }
+
+        /* --boundary\r\n : New var */
+        if ((len - idx < 4 + boundary_len) || src[idx] != '-' || src[idx + 1] != '-' ||
+            /* and if it's really followed by a boundary */
+            strncmp((const char*)src + idx + 2, (const char*)boundary, boundary_len) ||
+            /* and if it's not the last boundary of the buffer */
+            idx + boundary_len + 2 + 2 >= len ||
+            /* and if it's followed by \r\n */
+            src[idx + boundary_len + 2] != '\r' || src[idx + boundary_len + 3] != '\n') {
+            /* bad boundary */
+            formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad boundary", (const char*)boundary, false);
+            block = true;
+            return;
+        }
+        idx += boundary_len + 4;
+        /* we have two cases :
+        ** ---- file upload
+        ** Content-Disposition: form-data; name="somename"; filename="NetworkManager.conf"\r\n
+        ** Content-Type: application/octet-stream\r\n\r\n
+        ** <DATA>
+        ** ---- normal post var
+        ** Content-Disposition: form-data; name="lastname"\r\n\r\n
+        ** <DATA>
+        */
+        if (strncasecmp((const char*)src + idx, "content-disposition: form-data;", 31)) {
+            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : unknown content-disposition",
+                        (const char*) src + idx, false);
+            block = true;
+            return;
+        }
+        idx += 31;
+        line_end = (u_char *) strchr((const char*)src + idx, '\n');
+        if (!line_end) {
+            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed boundary line", string(), false);
+            block = true;
+            return;
+        }
+        /* Parse content-disposition, extract name / filename */
+        varn_start = varn_end = filen_start = filen_end = NULL;
+        if (!contentDispositionParser(src + idx, line_end, &varn_start, &varn_end, &filen_start, &filen_end)) {
+            formatMatch(parser.uncommonPostFormat, 1, BODY, string(), string(), false);
+            block = true;
+            return;
+        }
+        /* var name is mandatory */
+        if (!varn_start || !varn_end || varn_end <= varn_start) {
+            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : no 'name' in POST var", string(), false);
+            block = true;
+            return;
+        }
+        varn_len = varn_end - varn_start;
+
+        /* If there is a filename, it is followed by a "content-type" line, skip it */
+        if (filen_start && filen_end) {
+            line_end = (u_char *) strchr((const char*) line_end + 1, '\n');
+            if (!line_end) {
+                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed filename (no content-type ?)", string(), false);
+                block = true;
+                return;
+            }
+        }
+        /*
+        ** now idx point to the end of the
+        ** content-disposition: form-data; filename="" name=""
+        */
+        idx += line_end - (src + idx) + 1;
+        if (src[idx] != '\r' || src[idx + 1] != '\n') {
+            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", string(), false);
+            block = true;
+            return;
+        }
+        idx += 2;
+        /* seek the end of the data */
+        end = NULL;
+        while (idx < len) {
+            end = (u_char *) strstr((char*) src + idx, "\r\n--");
+            /* file data can contain \x0 */
+            while (!end) {
+                idx += strlen((const char *) src + idx);
+                if (idx < len - 2) {
+                    idx++;
+                    end = (u_char *) strstr((char*)src + idx, "\r\n--");
+                }
+                else
+                    break;
+            }
+            if (!end) {
+                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", string(), false);
+                block = true;
+                return;
+            }
+            if (!strncmp((const char *)end + 4, (const char *)boundary, boundary_len))
+                break;
+            else {
+                idx += (end - (src + idx)) + 1;
+                end = NULL;
+            }
+        }
+        if (!end) {
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "POST data : malformed line");
+            return;
+        }
+        if (filen_start) {
+            final_var.data = varn_start;
+            final_var.len = varn_len;
+            final_data.data = filen_start;
+            final_data.len = filen_end - filen_start;
+            nullbytes = naxsi_unescape(&final_var);
+            if (nullbytes > 0) {
+                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), true);
+                block = true;
+            }
+            nullbytes = naxsi_unescape(&final_data);
+            if (nullbytes > 0) {
+                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), false);
+                block = true;
+            }
+
+            /* here we got val name + val content !*/
+            string finalVar = string((char*)final_var.data, final_var.len);
+            string finalData = string((char*)final_data.data, final_data.len);
+            basestrRuleset(FILE_EXT, finalVar, finalData, parser.bodyRules);
+
+            idx += end - (src + idx);
+        }
+        else if (varn_start) {
+            varc_len = end - (src + idx);
+            final_var.data = varn_start;
+            final_var.len = varn_len;
+            final_data.data = src + idx;
+            final_data.len = varc_len;
+            nullbytes = naxsi_unescape(&final_var);
+            if (nullbytes > 0) {
+                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), true);
+                block = true;
+            }
+            nullbytes = naxsi_unescape(&final_data);
+            if (nullbytes > 0) {
+                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), false);
+                block = true;
+            }
+
+            /* here we got val name + val content !*/
+            string finalVar = string((char*)final_var.data, final_var.len);
+            string finalData = string((char*)final_data.data, final_data.len);
+            basestrRuleset(BODY, finalVar, finalData, parser.bodyRules);
+
+            idx += end - (src + idx);
+        }
+        else {
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "(multipart) : ");
+        }
+        if (!strncmp((const char*) end, "\r\n", 2))
+            idx += 2;
+    }
+}
+
+/*
+ * decode url (key=val&key2=val2...)
+ * splits the string into key/val pair
+ * apply rules to key/val
+ */
+bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t *> &rules, MATCH_ZONE zone) {
+    str_t name, val;
+    char *eq, *ev, *orig;
+    long len, full_len;
+    int nullbytes = 0;
+
+    orig = str;
+    full_len = strlen(orig);
+    while (str < (orig + full_len) && *str) {
+        if (*str == '&') {
+            str++;
+            continue;
+        }
+        if ((block && !scfg->learning) || drop)
+            return false;
+        eq = strchr(str, '=');
+        ev = strchr(str, '&');
+
+        if ((!eq && !ev) /*?foobar */ || (eq && ev && eq > ev)) /*?foobar&bla=test*/ {
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-url has no '&' and '=' or has both [%s]", str);
+
+            if (!ev)
+                ev = str + strlen(str);
+            /* len is now [name] */
+            len = ev - str;
+            val.data = (unsigned char *) str;
+            val.len = ev - str;
+            name.data = (unsigned char *) NULL;
+            name.len = 0;
+        }
+        /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
+        else if (!eq) {
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-url has no '=' but has '&' [%s]", str);
+
+            formatMatch(parser.uncommonUrl, 1, zone, string(), string(), false);
+            if (ev > str) /* ?var& | ?var&val */ {
+                val.data = (unsigned char *) str;
+                val.len = ev - str;
+                name.data = (unsigned char *) NULL;
+                name.len = 0;
+                len = ev - str;
+            }
+            else /* ?& | ?&&val */ {
+                val.data = name.data = NULL;
+                val.len = name.len = 0;
+                len = 1;
+            }
+        }
+        else /* should be normal like ?var=bar& ..*/ {
+            if (!ev) /* ?bar=lol */
+                ev = str + strlen(str);
+            /* len is now [name]=[content] */
+            len = ev - str;
+            eq = strnchr(str, '=', len);
+            if (!eq) {
+                formatMatch(parser.uncommonUrl, 1, zone, "malformed url, possible attack [%s]", str, false);
+                return true;
+            }
+            eq++;
+            val.data = (unsigned char *) eq;
+            val.len = ev - eq;
+            name.data = (unsigned char *) str;
+            name.len = eq - str - 1;
+        }
+        if (name.len) {
+            nullbytes = naxsi_unescape(&name);
+            if (nullbytes > 0) {
+                formatMatch(parser.uncommonUrl, 1, zone, (char*)name.data, (char*)val.data, true);
+            }
+        }
+        if (val.len) {
+            nullbytes = naxsi_unescape(&val);
+            if (nullbytes > 0) {
+                formatMatch(parser.uncommonUrl, 1, zone, (char*)name.data, (char*)val.data, false);
+            }
+        }
+
+        string key = string((char*)name.data, name.len);
+        string value = string((char*)val.data, val.len);
+        cerr << key << ":" << value << endl;
+        transform(key.begin(), key.end(), key.begin(), tolower);
+        transform(value.begin(), value.end(), value.begin(), tolower);
+        basestrRuleset(zone, key, value, rules);
+
+        str += len;
+    }
+
+    return false;
 }
 
 int RuntimeScanner::postReadRequest(request_rec *rec) {
     r = rec;
 
     /* Store every HTTP header received */
+    bool contentTypeFound = false;
     const apr_array_header_t *headerFields = apr_table_elts(r->headers_in);
     apr_table_entry_t *headerEntry = (apr_table_entry_t *) headerFields->elts;
     for (int i = 0; i < headerFields->nelts; i++) {
@@ -235,15 +620,22 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         transform(val.begin(), val.end(), val.begin(), tolower);
         /* Store content-type for further processing */
         if (key == "content-type") {
-            if (val == "application/x-www-form-urlencoded") {
+//            cerr << key << ": " << val << endl;
+            if (caseEqual(val, "application/x-www-form-urlencoded")) {
                 contentType = URL_ENC;
             }
-            else if (val == "multipart/form-data") {
-                contentType = FORM_DATA;
+            else if (caseEqual(val.substr(0, 20), "multipart/form-data;")) {
+                contentType = MULTIPART;
+                rawContentType = string(val);
             }
-            else if (val == "application/json") {
+            else if (caseEqual(val, "application/json")) {
                 contentType = APP_JSON;
             }
+            contentTypeFound = true;
+        }
+        if (!contentTypeFound) {
+            formatMatch(parser.uncommonContentType, 1, HEADERS, string(), string(), false);
+            return HTTP_FORBIDDEN;
         }
         basestrRuleset(HEADERS, key, val, parser.headerRules);
     }
@@ -284,19 +676,15 @@ int RuntimeScanner::processBody() {
 
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
-        /* URL Decode the whole body */
-        *rawBody = urlDecode(*rawBody);
-        /* String to lower the whole body */
-        transform(rawBody->begin(), rawBody->end(), rawBody->begin(), tolower);
-
-        vector<string> bodyPart = split(*rawBody, '&');
-        for (string &part : bodyPart) {
-            pair<string, string> kv = kvSplit(part, '=');
-//            cerr << kv.first << ":" << kv.second << endl;
-            basestrRuleset(BODY, kv.first, kv.second, parser.bodyRules);
+        if (splitUrlEncodedRuleset(&(*rawBody)[0], parser.bodyRules, BODY)) {
+            formatMatch(parser.uncommonUrl, 1, BODY, string(), string(), false);
+            block = true;
         }
     }
-
+    /* If Content-Type: multipart/form-data */
+    else if (contentType == MULTIPART) {
+        multipartParse((u_char*) &(*rawBody)[0], rawBody->length());
+    }
     writeLearningLog();
 
     if (block) {
@@ -319,7 +707,6 @@ void RuntimeScanner::writeLearningLog() {
         errlog << "uri=" << r->parsed_uri.path << "&";
 
         errlog << "block=" << block << "&";
-
         int i = 0;
         for (const auto &match : matchScores) {
             errlog << "cscore" << i << "=" << match.first << "&";
