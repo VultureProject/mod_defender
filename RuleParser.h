@@ -233,11 +233,13 @@ public:
     unordered_map<string, whitelist_rule_t> wlBodyHash; // hash table of whitelisted BODY rules
     unordered_map<string, whitelist_rule_t> wlHeadersHash; // hash table of whitelisted HEADERS rules
     vector<http_rule_t> disabled_rules; // rules that are globally disabled in one location
+    http_rule_t bigRequest;
     http_rule_t uncommonHexEncoding;
     http_rule_t uncommonContentType;
     http_rule_t uncommonUrl;
     http_rule_t uncommonPostFormat;
     http_rule_t uncommonPostBoundary;
+    http_rule_t emptyPostBody;
     http_rule_t libsqliRule;
     http_rule_t libxssRule;
 

@@ -2,7 +2,6 @@
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-#include "Util.h"
 
 void RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string &name,
                                  const string &value, bool targetName) {
@@ -534,7 +533,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
         ev = strchr(str, '&');
 
         if ((!eq && !ev) /*?foobar */ || (eq && ev && eq > ev)) /*?foobar&bla=test*/ {
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-url has no '&' and '=' or has both [%s]", str);
+            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "XX-url has no '&' and '=' or has both [%s]", str);
 
             if (!ev)
                 ev = str + strlen(str);
@@ -547,7 +546,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
         }
         /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
         else if (!eq) {
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-url has no '=' but has '&' [%s]", str);
+            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "XX-url has no '=' but has '&' [%s]", str);
 
             formatMatch(parser.uncommonUrl, 1, zone, string(), string(), false);
             if (ev > str) /* ?var& | ?var&val */ {
@@ -570,7 +569,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
             len = ev - str;
             eq = strnchr(str, '=', len);
             if (!eq) {
-                formatMatch(parser.uncommonUrl, 1, zone, "malformed url, possible attack [%s]", str, false);
+                formatMatch(parser.uncommonUrl, 1, zone, "malformed url, possible attack", string(), false);
                 return true;
             }
             eq++;
@@ -594,7 +593,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
 
         string key = string((char*)name.data, name.len);
         string value = string((char*)val.data, val.len);
-        cerr << key << ":" << value << endl;
+//        cerr << key << ":" << value << endl;
         transform(key.begin(), key.end(), key.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
         basestrRuleset(zone, key, value, rules);
@@ -609,7 +608,6 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
     r = rec;
 
     /* Store every HTTP header received */
-    bool contentTypeFound = false;
     const apr_array_header_t *headerFields = apr_table_elts(r->headers_in);
     apr_table_entry_t *headerEntry = (apr_table_entry_t *) headerFields->elts;
     for (int i = 0; i < headerFields->nelts; i++) {
@@ -618,8 +616,18 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         string val = string(headerEntry[i].val);
         transform(key.begin(), key.end(), key.begin(), tolower);
         transform(val.begin(), val.end(), val.begin(), tolower);
-        /* Store content-type for further processing */
-        if (key == "content-type") {
+        /* Retrieve Content-Length */
+        if (key == "content-length") {
+            try {
+                contentLength = std::stoi(val);
+            }
+            catch (std::exception const &e) {
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert content-type: \"%s\" to interger",
+                             e.what(), val.c_str());
+            }
+        }
+        /* Store Content-Type for further processing */
+        else if (key == "content-type") {
 //            cerr << key << ": " << val << endl;
             if (caseEqual(val, "application/x-www-form-urlencoded")) {
                 contentType = URL_ENC;
@@ -632,10 +640,6 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
                 contentType = APP_JSON;
             }
             contentTypeFound = true;
-        }
-        if (!contentTypeFound) {
-            formatMatch(parser.uncommonContentType, 1, HEADERS, string(), string(), false);
-            return HTTP_FORBIDDEN;
         }
         basestrRuleset(HEADERS, key, val, parser.headerRules);
     }
@@ -674,16 +678,21 @@ int RuntimeScanner::processBody() {
         return DECLINED;
     }
 
+    if (!contentTypeFound) {
+        formatMatch(parser.uncommonContentType, 1, HEADERS, string(), string(), false);
+        return HTTP_FORBIDDEN;
+    }
+
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
-        if (splitUrlEncodedRuleset(&(*rawBody)[0], parser.bodyRules, BODY)) {
+        if (splitUrlEncodedRuleset(&(rawBody)[0], parser.bodyRules, BODY)) {
             formatMatch(parser.uncommonUrl, 1, BODY, string(), string(), false);
             block = true;
         }
     }
     /* If Content-Type: multipart/form-data */
     else if (contentType == MULTIPART) {
-        multipartParse((u_char*) &(*rawBody)[0], rawBody->length());
+        multipartParse((u_char*) &(rawBody)[0], rawBody.length());
     }
     writeLearningLog();
 
@@ -694,44 +703,41 @@ int RuntimeScanner::processBody() {
 }
 
 void RuntimeScanner::writeLearningLog() {
-    if (scfg->learning && rulesMatchedCount > 0) {
-        std::time_t tt = system_clock::to_time_t(system_clock::now());
-        std::tm *ptm = std::localtime(&tt);
-        stringstream errlog;
-        errlog << std::put_time(ptm, "%Y/%m/%d %T") << " ";
-        errlog << "[error] ";
-        errlog << "NAXSI_FMT: ";
+    if (!scfg->learning || rulesMatchedCount == 0)
+        return;
 
-        errlog << "ip=" << r->useragent_ip << "&";
-        errlog << "server=" << r->hostname << "&";
-        errlog << "uri=" << r->parsed_uri.path << "&";
+    std::time_t tt = system_clock::to_time_t(system_clock::now());
+    std::tm *ptm = std::localtime(&tt);
+    stringstream errlog;
+    errlog << std::put_time(ptm, "%Y/%m/%d %T") << " ";
+    errlog << "[error] ";
+    errlog << "NAXSI_FMT: ";
 
-        errlog << "block=" << block << "&";
-        int i = 0;
-        for (const auto &match : matchScores) {
-            errlog << "cscore" << i << "=" << match.first << "&";
-            errlog << "score" << i << "=" << match.second << "&";
-            i++;
-        }
+    errlog << "ip=" << r->useragent_ip << "&";
+    errlog << "server=" << r->hostname << "&";
+    errlog << "uri=" << r->parsed_uri.path << "&";
 
-        errlog << matchVars.str();
-
-        errlog << ", ";
-
-        errlog << "client: " << r->useragent_ip << ", ";
-        errlog << "server: " << r->server->server_hostname << ", ";
-        errlog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
-        errlog << "host: \"" << r->hostname << "\"";
-
-        errlog << endl;
-
-        const string tmp = errlog.str();
-        const char *szStr = tmp.c_str();
-        apr_size_t szStrlen = strlen(szStr);
-        apr_file_write(scfg->errorlog_fd, szStr, &szStrlen);
+    errlog << "block=" << block << "&";
+    int i = 0;
+    for (const auto &match : matchScores) {
+        errlog << "cscore" << i << "=" << match.first << "&";
+        errlog << "score" << i << "=" << match.second << "&";
+        i++;
     }
-}
 
-RuntimeScanner::~RuntimeScanner() {
-    delete rawBody;
+    errlog << matchVars.str();
+
+    errlog << ", ";
+
+    errlog << "client: " << r->useragent_ip << ", ";
+    errlog << "server: " << r->server->server_hostname << ", ";
+    errlog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
+    errlog << "host: \"" << r->hostname << "\"";
+
+    errlog << endl;
+
+    const string tmp = errlog.str();
+    const char *szStr = tmp.c_str();
+    apr_size_t szStrlen = strlen(szStr);
+    apr_file_write(scfg->errorlog_fd, szStr, &szStrlen);
 }

@@ -60,6 +60,7 @@ private:
     string uri;
     unordered_map<string, int> matchScores;
     string rawContentType;
+    bool contentTypeFound = false;
 
     bool block = false;
     bool drop = false;
@@ -68,9 +69,9 @@ private:
 
 public:
     enum CONTENT_TYPE contentType = UNSUPPORTED;
-    string* rawBody = nullptr;
+    int contentLength = 0;
+    string rawBody;
 
-    virtual ~RuntimeScanner();
     RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser) {}
     int postReadRequest(request_rec *rec);
     void applyCheckRuleAction(const rule_action_t &action);

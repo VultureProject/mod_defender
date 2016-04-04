@@ -40,6 +40,7 @@ APLOG_USE_MODULE(defender);
 typedef struct {
     char *errorlog_path;
     apr_file_t *errorlog_fd;
+    long requestBodyLimit = 0;
     bool libinjection_sql = false;
     bool libinjection_xss = false;
     bool libinjection = false;

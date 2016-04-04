@@ -3,6 +3,9 @@
 
 RuleParser::RuleParser() {
     /* Internal rules */
+    bigRequest.id = 2;
+    bigRequest.logMsg = "Big request";
+
     uncommonHexEncoding.id = 10;
     uncommonHexEncoding.logMsg = "Uncommon hex encoding";
 
@@ -17,6 +20,9 @@ RuleParser::RuleParser() {
 
     uncommonPostBoundary.id = 14;
     uncommonPostBoundary.logMsg = "Uncommon post boundary";
+
+    emptyPostBody.id = 16;
+    emptyPostBody.logMsg = "Empty post body";
 
     libsqliRule.id = 17;
     libsqliRule.scores.emplace_back("$SQL", 8);
