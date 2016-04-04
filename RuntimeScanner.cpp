@@ -473,6 +473,9 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             /* here we got val name + val content !*/
             string finalVar = string((char*)final_var.data, final_var.len);
             string finalData = string((char*)final_data.data, final_data.len);
+            transform(finalVar.begin(), finalVar.end(), finalVar.begin(), tolower);
+            transform(finalData.begin(), finalData.end(), finalData.begin(), tolower);
+//            cerr << finalVar << ":" << finalData << endl;
             basestrRuleset(FILE_EXT, finalVar, finalData, parser.bodyRules);
 
             idx += end - (src + idx);
@@ -497,6 +500,9 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             /* here we got val name + val content !*/
             string finalVar = string((char*)final_var.data, final_var.len);
             string finalData = string((char*)final_data.data, final_data.len);
+            transform(finalVar.begin(), finalVar.end(), finalVar.begin(), tolower);
+            transform(finalData.begin(), finalData.end(), finalData.begin(), tolower);
+//            cerr << finalVar << ":" << finalData << endl;
             basestrRuleset(BODY, finalVar, finalData, parser.bodyRules);
 
             idx += end - (src + idx);
