@@ -52,6 +52,8 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     $ cat <<EOT | sudo tee /etc/moddefender/moddefender.conf > /dev/null
     # Match log path
     MatchLog \${APACHE_LOG_DIR}/moddef_match.log
+    # Request body limit
+    RequestBodyLimit 131072
     # Learning mode toggle
     LearningMode On
     # Libinjection SQL toggle
