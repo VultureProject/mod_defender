@@ -91,6 +91,10 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
                 bodyRules.push_back(rule);
                 DEBUG_CONF_MR("[body] ");
             }
+            if (rule->br->rawBodyMz) { // push in raw body match rules (POST/PUT)
+                rawBodyRules.push_back(rule);
+                DEBUG_CONF_MR("[rawbody] ");
+            }
             if (rule->br->urlMz || rule->br->specificUrlMz) { // push in generic rules, as it's matching the URI
                 genericRules.push_back(rule);
                 DEBUG_CONF_MR("[generic] ");
@@ -218,6 +222,10 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             else if (mz == "BODY") {
                 rule.br->bodyMz = true;
                 DEBUG_CONF_MZ("BODY ");
+            }
+            else if (mz == "RAWBODY") {
+                rule.br->rawBodyMz = true;
+                DEBUG_CONF_MZ("RAWBODY ");
             }
             else if (mz == "FILE_EXT") {
                 rule.br->fileExtMz = true;
