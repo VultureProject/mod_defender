@@ -4,7 +4,8 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 ### Dependencies
 * apache2-dev package to provide Apache Extension Tool and Apache2 headers
 * gcc & g++ >= 5.2
-* CMake >= 3.2
+* make
+* cmake >= 3.2
 
 ### Installation
 1. Install dependencies
