@@ -145,6 +145,9 @@ static int fixer_upper(request_rec *r) {
 
         /* Iterate on the buckets in the brigade
          * to retrieve the body of the request */
+        if (runtimeScanner->contentLength <= scfg->requestBodyLimit) {
+            runtimeScanner->rawBody.reserve(runtimeScanner->contentLength);
+        }
         for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb_in);
              bucket != APR_BRIGADE_SENTINEL(bb_in); bucket = APR_BUCKET_NEXT(bucket)) {
             const char *buf;
@@ -257,8 +260,8 @@ static const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *ar
 
 static const char *set_request_body_limit(cmd_parms *cmd, void *_dcfg, const char *arg) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    long int limit;
-    limit = strtol(arg, NULL, 10);
+    unsigned long limit;
+    limit = strtoul(arg, NULL, 10);
     if ((limit == LONG_MAX) || (limit == LONG_MIN) || (limit <= 0)) {
         return apr_psprintf(cmd->pool, "mod_defender: Invalid value for SecRequestBodyLimit: %s", arg);
     }
