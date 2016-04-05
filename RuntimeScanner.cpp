@@ -93,7 +93,10 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
     }
     else if (!rl.br->str.empty()) {
         DEBUG_RUNTIME_PR(" ? " << rl.br->str << "] ");
-        nbMatch = countSubstring(str, rl.br->str);
+//        nbMatch = countSubstring(str, rl.br->str);
+//        nbMatch = countSubstring(str.c_str(), str.size(), rl.br->str.c_str(), rl.br->str.size());
+        nbMatch = countSubstring(str.c_str(), rl.br->str.c_str(), rl.br->str.size());
+
 
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
