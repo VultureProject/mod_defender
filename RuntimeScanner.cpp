@@ -2,8 +2,9 @@
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
+#include "Util.h"
 
-void RuntimeScanner::formatMatch(const http_rule_t &rule, int nbMatch, enum MATCH_ZONE zone, const string &name,
+void RuntimeScanner::formatMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                  const string &value, bool targetName) {
     if (!scfg->learning)
         return;
@@ -38,8 +39,8 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
         log = true;
 }
 
-void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
-                                    enum MATCH_ZONE zone, bool targetName) {
+void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
+                                    const string &value, MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
         cerr << formatLog(DEFLOG_WARN, r->useragent_ip);
         cerr << KGRN "✓ Rule #" << rule.id << " ";
@@ -53,7 +54,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
     // negative rule case
     if (nbMatch == 0)
         nbMatch = 1;
-    for (const pair<string, int> &tagScore : rule.scores) {
+    for (const pair<string, unsigned long> &tagScore : rule.scores) {
         bool matched = false;
         int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
@@ -74,14 +75,14 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, int nbMatch, const 
     rulesMatchedCount++;
 }
 
-bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch) {
+bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
     if (!rl.br || str.empty())
         return false;
     DEBUG_RUNTIME_PR("[" << str);
     nbMatch = 0;
     if (rl.br->rx) {
         DEBUG_RUNTIME_PR(" ? <regex>] ");
-        nbMatch = (int) distance(sregex_iterator(str.begin(), str.end(), *rl.br->rx), sregex_iterator());
+        nbMatch = (unsigned long) distance(sregex_iterator(str.begin(), str.end(), *rl.br->rx), sregex_iterator());
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
             return !rl.br->negative;
@@ -93,6 +94,7 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
     else if (!rl.br->str.empty()) {
         DEBUG_RUNTIME_PR(" ? " << rl.br->str << "] ");
         nbMatch = countSubstring(str, rl.br->str);
+
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
             return !rl.br->negative;
@@ -104,12 +106,12 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
     return false;
 }
 
-void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, const string &value,
+void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
                                     const vector<http_rule_t *> &rules) {
     if (scfg->libinjection)
         checkLibInjection(zone, name, value);
 
-    int nbMatch = 0;
+    unsigned long nbMatch = 0;
     for (int i = 0; i < rules.size() && ((!block || scfg->learning) && !drop); i++) {
         const http_rule_t &rule = *rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
@@ -170,7 +172,7 @@ void RuntimeScanner::basestrRuleset(enum MATCH_ZONE zone, const string &name, co
     }
 }
 
-void RuntimeScanner::checkLibInjection(enum MATCH_ZONE zone, const string &name, const string &value) {
+void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, const string &value) {
     if (value.empty() && name.empty())
         return;
     char *szValue = NULL;
@@ -254,7 +256,7 @@ bool RuntimeScanner::contentDispositionParser(unsigned char *str, unsigned char 
             varn_end = varn_start = str + 6;
             do {
                 varn_end = (unsigned char *) strchr((const char *) varn_end, '"');
-                if (!varn_end || (varn_end && *(varn_end - 1) != '\\'))
+                if (!varn_end || (*(varn_end - 1) != '\\'))
                     break;
                 varn_end++;
             } while (varn_end && varn_end < line_end);
@@ -523,7 +525,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
 bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t *> &rules, MATCH_ZONE zone) {
     str_t name, val;
     char *eq, *ev, *orig;
-    long len, full_len;
+    unsigned long len, full_len;
     int nullbytes = 0;
 
     orig = str;
@@ -625,7 +627,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         /* Retrieve Content-Length */
         if (key == "content-length") {
             try {
-                contentLength = std::stoi(val);
+                contentLength = std::stoul(val);
             }
             catch (std::exception const &e) {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert content-type: \"%s\" to interger",
@@ -689,17 +691,32 @@ int RuntimeScanner::processBody() {
         return HTTP_FORBIDDEN;
     }
 
+    if (rawBody.empty()) {
+        return DECLINED;
+    }
+
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
-        if (splitUrlEncodedRuleset(&(rawBody)[0], parser.bodyRules, BODY)) {
+        if (splitUrlEncodedRuleset(&rawBody[0], parser.bodyRules, BODY)) {
             formatMatch(parser.uncommonUrl, 1, BODY, string(), string(), false);
             block = true;
         }
     }
     /* If Content-Type: multipart/form-data */
     else if (contentType == MULTIPART) {
-        multipartParse((u_char*) &(rawBody)[0], rawBody.length());
+        multipartParse((u_char*) &rawBody[0], rawBody.length());
     }
+    else {
+        str_t body;
+        body.data = (u_char*) &rawBody[0];
+        body.len = rawBody.length();
+
+        naxsi_unescape(&body);
+        rawBody.resize(body.len);
+
+        basestrRuleset(RAW_BODY, string(), rawBody, parser.rawBodyRules);
+    }
+
     writeLearningLog();
 
     if (block) {
