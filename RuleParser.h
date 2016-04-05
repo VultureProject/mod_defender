@@ -92,7 +92,7 @@ typedef enum {
 
 typedef struct {
     comparator_t comparator;
-    int limit;
+    unsigned long limit;
     rule_action_t action;
 } check_rule_t;
 
@@ -144,6 +144,7 @@ enum MATCH_ZONE {
     URL,
     ARGS,
     BODY,
+    RAW_BODY,
     FILE_EXT,
     UNKNOWN
 };
@@ -153,6 +154,7 @@ static const char *match_zones[] = {
         "URL",
         "ARGS",
         "BODY",
+        "RAW_BODY",
         "FILE_EXT",
         "UNKNOWN",
         NULL
@@ -165,7 +167,7 @@ static const char *match_zones[] = {
 */
 typedef struct {
     vector<whitelist_location_t> whitelistLocations;
-    enum MATCH_ZONE zone; // zone to wich the WL applies
+    MATCH_ZONE zone; // zone to wich the WL applies
     bool uriOnly = false; // if the "name" is only an url, specify it
     bool targetName = false; // does the rule targets the name instead of the content
     string name; // hash key [#]URI#VARNAME
@@ -176,8 +178,9 @@ typedef struct {
     regex *rx = nullptr;
     string str;
     bool rxMz = false;
-    enum MATCH_ZONE zone;
+    MATCH_ZONE zone;
     bool bodyMz = false;
+    bool rawBodyMz = false;
     bool bodyVarMz = false;
     bool headersMz = false;
     bool headersVarMz = false;
@@ -199,21 +202,21 @@ enum RULE_TYPE {
 
 /* TOP level rule structure */
 typedef struct {
-    enum RULE_TYPE type; // type of the rule
+    RULE_TYPE type; // type of the rule
     bool whitelist = false; // simply put a flag if it's a wlr, wl_id array will be used to store the whitelisted IDs
     vector<int> wlIds;
     /* "common" data for all rules */
-    int id;
+    unsigned long id;
     string logMsg; // a specific log message
     /* List of scores increased on rule match. */
-    vector<pair<string, int>> scores;
+    vector<pair<string, unsigned long>> scores;
     basic_rule_t *br; // specific rule stuff
 } http_rule_t;
 
 class RuleParser {
 private:
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
-    bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, enum MATCH_ZONE zone, bool targetName);
+    bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, MATCH_ZONE zone, bool targetName);
     bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
     string parseCode(std::regex_constants::error_type etype);
@@ -222,6 +225,7 @@ public:
     unordered_map<string, check_rule_t> checkRules;
     vector<http_rule_t*> getRules;
     vector<http_rule_t*> bodyRules;
+    vector<http_rule_t*> rawBodyRules;
     vector<http_rule_t*> headerRules;
     vector<http_rule_t*> genericRules; // URL
 
@@ -249,7 +253,7 @@ public:
     void parseBasicRules(vector<string> rulesArray);
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     void generateHashTables();
-    void wlrIdentify(const http_rule_t &curr, enum MATCH_ZONE &zone, int &uri_idx, int &name_idx);
+    void wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, MATCH_ZONE &zone, int &uriIndex, int &name_idx);
     bool checkIds(int matchId, const vector<int> &wlIds);
     bool findWlInHash(whitelist_rule_t &wlRule, const string &key, MATCH_ZONE zone);
