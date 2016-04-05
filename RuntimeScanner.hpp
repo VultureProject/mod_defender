@@ -55,8 +55,6 @@ private:
     RuleParser& parser;
     stringstream matchVars;
     unsigned int rulesMatchedCount = 0;
-    vector<pair<const string, const string>> headers;
-    vector<pair<const string, const string>> args;
     string uri;
     unordered_map<string, int> matchScores;
     string rawContentType;
@@ -68,8 +66,8 @@ private:
     bool log = false;
 
 public:
-    enum CONTENT_TYPE contentType = UNSUPPORTED;
-    int contentLength = 0;
+    CONTENT_TYPE contentType = UNSUPPORTED;
+    unsigned long contentLength = 0;
     string rawBody;
 
     RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser) {}
@@ -78,11 +76,11 @@ public:
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
                         const vector<http_rule_t*> &rules);
-    bool processRuleBuffer(const string &str, const http_rule_t &rl, int &nbMatch);
-    void applyCheckRule(const http_rule_t &rule, int nbMatch, const string &name, const string &value,
+    bool processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch);
+    void applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name, const string &value,
                         MATCH_ZONE zone, bool targetName);
-    void formatMatch(const http_rule_t &rule, int nbMatch, MATCH_ZONE zone, const string &name, const string &value,
-                     bool targetName);
+    void formatMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
+                     const string &value, bool targetName);
     int processBody();
     void writeLearningLog();
     bool parseFormDataBoundary(unsigned char **boundary, unsigned long *boundary_len);
