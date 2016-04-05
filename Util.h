@@ -15,6 +15,7 @@
 #include <chrono>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string.h>
 
 using std::chrono::system_clock;
 using namespace std::chrono;
@@ -69,9 +70,9 @@ namespace Util {
         return ltrim(rtrim(s));
     }
 
-    inline int countSubstring(const string &str, const string &sub) {
+    inline unsigned long countSubstring(const string &str, const string &sub) {
         if (sub.length() == 0) return 0;
-        int count = 0;
+        unsigned long count = 0;
         for (size_t offset = str.find(sub); offset != std::string::npos;
              offset = str.find(sub, offset + sub.length())) {
             ++count;
@@ -79,17 +80,25 @@ namespace Util {
         return count;
     }
 
-    inline pair<string, string> kvSplit(const string &s, char delim) {
-        pair<string, string> p;
-        unsigned long delimpos = s.find(delim);
-        if (s.length() > 0 && delimpos >= s.length()) {
-            p.first = s;
+    inline unsigned long countSubstring(const char* str, size_t len, const char* pattern, size_t patternLen) {
+        char* p;
+        unsigned long count = 0;
+        unsigned long idx = 0;
+        while ((p = (char*) memmem(str + idx, len - idx, pattern, patternLen)) != NULL) {
+            count++;
+            idx = (p - str) + patternLen;
         }
-        else {
-            p.first = s.substr(0, delimpos);
-            p.second = s.substr(delimpos + 1, s.size());
-        }
-        return p;
+        return count;
+    }
+
+    inline unsigned long countSubstring(const char* str, const char* pattern, size_t patternLen) {
+         unsigned long count = 0;
+         char* p = (char*) str;
+         while ((p = strstr(p, pattern)) != NULL) {
+             count++;
+             p += patternLen;
+         }
+        return count;
     }
 
     inline bool caseEqual(const string &str1, const string &str2) {
@@ -125,7 +134,7 @@ namespace Util {
         return (nullbytes + bad);
     }
 
-    inline char* strnchr(const char *s, int c, int len) {
+    inline char* strnchr(const char *s, int c, unsigned long len) {
         int cpt;
         for (cpt = 0; cpt < len && s[cpt]; cpt++)
             if (s[cpt] == c)
