@@ -335,7 +335,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
     /*extract boundary*/
     if (!parseFormDataBoundary(&boundary, &boundary_len)) {
         if (boundary && boundary_len > 1)
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-POST boundary : (%s) : %ld", (const char*) boundary, boundary_len);
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
+                         boundary_len);
         formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", string(), false);
         block = true;
         return;
@@ -347,11 +348,12 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         /* if we've reached the last boundary '--' + boundary + '--' + '\r\n'$END */
         /* Authorize requests that don't have the leading \r\n */
         if (idx + boundary_len + 6 == len || idx + boundary_len + 4 == len) {
-            if (strncmp((const char*)src + idx, "--", 2) ||
-                strncmp((const char*)src + idx + 2, (const char*)boundary, boundary_len) ||
-                strncmp((const char*)src + idx + boundary_len + 2, "--", 2)) {
+            if (strncmp((const char *) src + idx, "--", 2) ||
+                strncmp((const char *) src + idx + 2, (const char *) boundary, boundary_len) ||
+                strncmp((const char *) src + idx + boundary_len + 2, "--", 2)) {
                 /* bad closing boundary ?*/
-                formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad closing boundary", (const char*)boundary, false);
+                formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad closing boundary",
+                            (const char *) boundary, false);
                 block = true;
                 return;
             } else
@@ -361,13 +363,14 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         /* --boundary\r\n : New var */
         if ((len - idx < 4 + boundary_len) || src[idx] != '-' || src[idx + 1] != '-' ||
             /* and if it's really followed by a boundary */
-            strncmp((const char*)src + idx + 2, (const char*)boundary, boundary_len) ||
+            strncmp((const char *) src + idx + 2, (const char *) boundary, boundary_len) ||
             /* and if it's not the last boundary of the buffer */
             idx + boundary_len + 2 + 2 >= len ||
             /* and if it's followed by \r\n */
             src[idx + boundary_len + 2] != '\r' || src[idx + boundary_len + 3] != '\n') {
             /* bad boundary */
-            formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad boundary", (const char*)boundary, false);
+            formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad boundary",
+                        (const char *) boundary, false);
             block = true;
             return;
         }
@@ -381,14 +384,14 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         ** Content-Disposition: form-data; name="lastname"\r\n\r\n
         ** <DATA>
         */
-        if (strncasecmp((const char*)src + idx, "content-disposition: form-data;", 31)) {
+        if (strncasecmp((const char *) src + idx, "content-disposition: form-data;", 31)) {
             formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : unknown content-disposition",
-                        (const char*) src + idx, false);
+                        (const char *) src + idx, false);
             block = true;
             return;
         }
         idx += 31;
-        line_end = (u_char *) strchr((const char*)src + idx, '\n');
+        line_end = (u_char *) strchr((const char *) src + idx, '\n');
         if (!line_end) {
             formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed boundary line", string(), false);
             block = true;
@@ -411,9 +414,10 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
 
         /* If there is a filename, it is followed by a "content-type" line, skip it */
         if (filen_start && filen_end) {
-            line_end = (u_char *) strchr((const char*) line_end + 1, '\n');
+            line_end = (u_char *) strchr((const char *) line_end + 1, '\n');
             if (!line_end) {
-                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed filename (no content-type ?)", string(), false);
+                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed filename (no content-type ?)",
+                            string(), false);
                 block = true;
                 return;
             }
@@ -424,7 +428,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         */
         idx += line_end - (src + idx) + 1;
         if (src[idx] != '\r' || src[idx + 1] != '\n') {
-            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", string(), false);
+            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", string(),
+                        false);
             block = true;
             return;
         }
@@ -432,23 +437,24 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         /* seek the end of the data */
         end = NULL;
         while (idx < len) {
-            end = (u_char *) strstr((char*) src + idx, "\r\n--");
+            end = (u_char *) strstr((char *) src + idx, "\r\n--");
             /* file data can contain \x0 */
             while (!end) {
                 idx += strlen((const char *) src + idx);
                 if (idx < len - 2) {
                     idx++;
-                    end = (u_char *) strstr((char*)src + idx, "\r\n--");
+                    end = (u_char *) strstr((char *) src + idx, "\r\n--");
                 }
                 else
                     break;
             }
             if (!end) {
-                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", string(), false);
+                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line",
+                            string(), false);
                 block = true;
                 return;
             }
-            if (!strncmp((const char *)end + 4, (const char *)boundary, boundary_len))
+            if (!strncmp((const char *) end + 4, (const char *) boundary, boundary_len))
                 break;
             else {
                 idx += (end - (src + idx)) + 1;
@@ -476,8 +482,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             }
 
             /* here we got val name + val content !*/
-            string finalVar = string((char*)final_var.data, final_var.len);
-            string finalData = string((char*)final_data.data, final_data.len);
+            string finalVar = string((char *) final_var.data, final_var.len);
+            string finalData = string((char *) final_data.data, final_data.len);
             transform(finalVar.begin(), finalVar.end(), finalVar.begin(), tolower);
             transform(finalData.begin(), finalData.end(), finalData.begin(), tolower);
 //            cerr << finalVar << ":" << finalData << endl;
@@ -503,8 +509,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             }
 
             /* here we got val name + val content !*/
-            string finalVar = string((char*)final_var.data, final_var.len);
-            string finalData = string((char*)final_data.data, final_data.len);
+            string finalVar = string((char *) final_var.data, final_var.len);
+            string finalData = string((char *) final_data.data, final_data.len);
             transform(finalVar.begin(), finalVar.end(), finalVar.begin(), tolower);
             transform(finalData.begin(), finalData.end(), finalData.begin(), tolower);
 //            cerr << finalVar << ":" << finalData << endl;
@@ -515,7 +521,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         else {
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "(multipart) : ");
         }
-        if (!strncmp((const char*) end, "\r\n", 2))
+        if (!strncmp((const char *) end, "\r\n", 2))
             idx += 2;
     }
 }
@@ -555,7 +561,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
             name.data = (unsigned char *) NULL;
             name.len = 0;
         }
-        /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
+            /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
         else if (!eq) {
             ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "XX-url has no '=' but has '&' [%s]", str);
 
@@ -592,18 +598,18 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
         if (name.len) {
             nullbytes = naxsi_unescape(&name);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonUrl, 1, zone, (char*)name.data, (char*)val.data, true);
+                formatMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, true);
             }
         }
         if (val.len) {
             nullbytes = naxsi_unescape(&val);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonUrl, 1, zone, (char*)name.data, (char*)val.data, false);
+                formatMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, false);
             }
         }
 
-        string key = string((char*)name.data, name.len);
-        string value = string((char*)val.data, val.len);
+        string key = string((char *) name.data, name.len);
+        string value = string((char *) val.data, val.len);
 //        cerr << key << ":" << value << endl;
         transform(key.begin(), key.end(), key.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
@@ -637,7 +643,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
                              e.what(), val.c_str());
             }
         }
-        /* Store Content-Type for further processing */
+            /* Store Content-Type for further processing */
         else if (key == "content-type") {
 //            cerr << key << ": " << val << endl;
             if (caseEqual(val, "application/x-www-form-urlencoded")) {
@@ -705,13 +711,17 @@ int RuntimeScanner::processBody() {
             block = true;
         }
     }
-    /* If Content-Type: multipart/form-data */
+        /* If Content-Type: multipart/form-data */
     else if (contentType == MULTIPART) {
-        multipartParse((u_char*) &rawBody[0], rawBody.length());
+        multipartParse((u_char *) &rawBody[0], rawBody.length());
+    }
+        /* If Content-Type: application/json */
+    else if (contentType == APP_JSON) {
+        jsonParse((u_char *) &rawBody[0], rawBody.length());
     }
     else {
         str_t body;
-        body.data = (u_char*) &rawBody[0];
+        body.data = (u_char *) &rawBody[0];
         body.len = rawBody.length();
 
         naxsi_unescape(&body);
@@ -766,4 +776,264 @@ void RuntimeScanner::writeLearningLog() {
     const char *szStr = tmp.c_str();
     apr_size_t szStrlen = strlen(szStr);
     apr_file_write(scfg->errorlog_fd, szStr, &szStrlen);
+}
+
+bool RuntimeScanner::jsonForward(json_t *js) {
+    while ((*(js->src + js->off) == ' ' ||
+            *(js->src + js->off) == '\t' ||
+            *(js->src + js->off) == '\n' ||
+            *(js->src + js->off) == '\r') && js->off < js->len) {
+        js->off++;
+    }
+    js->c = *(js->src + js->off);
+    return true;
+}
+
+/*
+** used to fast forward in json POSTS,
+** we skip whitespaces/tab/CR/LF
+*/
+bool RuntimeScanner::jsonSeek(json_t *js, unsigned char seek) {
+    jsonForward(js);
+    return js->c == seek;
+}
+
+/*
+** extract a quoted strings,
+** JSON spec only supports double-quoted strings,
+** so do we.
+*/
+bool RuntimeScanner::jsonQuoted(json_t *js, str_t *ve) {
+    u_char *vn_start, *vn_end = NULL;
+
+    if (*(js->src + js->off) != '"')
+        return false;
+    js->off++;
+    vn_start = js->src + js->off;
+    /* extract varname inbetween "..."*/
+    while (js->off < js->len) {
+        /* skip next character if backslashed */
+        if (*(js->src + js->off) == '\\') {
+            js->off += 2;
+            if (js->off >= js->len) break;
+        }
+        if (*(js->src + js->off) == '"') {
+            vn_end = js->src + js->off;
+            js->off++;
+            break;
+        }
+        js->off++;
+    }
+    if (!vn_start || !vn_end)
+        return false;
+    if (!*vn_start || !*vn_end)
+        return false;
+    ve->data = vn_start;
+    ve->len = vn_end - vn_start;
+    return true;
+}
+
+/*
+** an array is values separated by ','
+*/
+bool RuntimeScanner::jsonArray(json_t *js) {
+    bool rc;
+
+    js->c = *(js->src + js->off);
+    if (js->c != '[' || js->depth > JSON_MAX_DEPTH)
+        return false;
+    js->off++;
+    do {
+        rc = jsonVal(js);
+        /* if we cannot extract the value,
+           we may have reached array end. */
+        if (!rc)
+            break;
+        jsonForward(js);
+        if (js->c == ',') {
+            js->off++;
+            jsonForward(js);
+        } else break;
+    } while (rc);
+    return js->c == ']';
+}
+
+
+bool RuntimeScanner::jsonVal(json_t *js) {
+    str_t val;
+    bool ret;
+
+    val.data = NULL;
+    val.len = 0;
+
+    jsonForward(js);
+    if (js->c == '"') {
+        ret = jsonQuoted(js, &val);
+        if (ret) {
+            /* parse extracted values. */
+            string jsckey = string((char *) js->ckey.data, js->ckey.len);
+            string value = string((char *) val.data, val.len);
+            transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
+            transform(value.begin(), value.end(), value.begin(), tolower);
+            basestrRuleset(BODY, jsckey, value, parser.bodyRules);
+
+            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) &(js->ckey.data), (char*) &(val.data));
+        }
+        return ret;
+    }
+    if ((js->c >= '0' && js->c <= '9') || js->c == '-') {
+        val.data = js->src + js->off;
+        while (((*(js->src + js->off) >= '0' && *(js->src + js->off) <= '9') ||
+                *(js->src + js->off) == '.' || *(js->src + js->off) == '-') && js->off < js->len) {
+            val.len++;
+            js->off++;
+        }
+        /* parse extracted values. */
+        string jsckey = string((char *) js->ckey.data, js->ckey.len);
+        string value = string((char *) val.data, val.len);
+        transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
+        transform(value.begin(), value.end(), value.begin(), tolower);
+        basestrRuleset(BODY, jsckey, value, parser.bodyRules);
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) &(js->ckey.data), (char*) &(val.data));
+        return true;
+    }
+    if (!strncasecmp((const char *) (js->src + js->off), (const char *) "true", 4) ||
+        !strncasecmp((const char *) (js->src + js->off), (const char *) "false", 5) ||
+        !strncasecmp((const char *) (js->src + js->off), (const char *) "null", 4)) {
+        js->c = *(js->src + js->off);
+        /* we don't check static values, do we ?! */
+        val.data = js->src + js->off;
+        if (js->c == 'F' || js->c == 'f') {
+            js->off += 5;
+            val.len = 5;
+        }
+        else {
+            js->off += 4;
+            val.len = 4;
+        }
+        /* parse extracted values. */
+        string jsckey = string((char *) js->ckey.data, js->ckey.len);
+        string value = string((char *) val.data, val.len);
+        transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
+        transform(value.begin(), value.end(), value.begin(), tolower);
+        basestrRuleset(BODY, jsckey, value, parser.bodyRules);
+
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) &(js->ckey.data), (char*) &(val.data));
+        return true;
+    }
+
+    if (js->c == '[') {
+        ret = jsonArray(js);
+        if (js->c != ']')
+            return false;
+        js->off++;
+        return (ret);
+    }
+    if (js->c == '{') {
+        /*
+        ** if sub-struct, parse key without value :
+        ** "foobar" : { "bar" : [1,2,3]} => "foobar" parsed alone.
+        ** this is to avoid "foobar" left unparsed, as we won't have
+        ** key/value here with "foobar" as a key.
+        */
+        string jsckey = string((char *) js->ckey.data, js->ckey.len);
+        transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
+        basestrRuleset(BODY, jsckey, string(), parser.bodyRules);
+
+        ret = jsonObj(js);
+        jsonForward(js);
+        if (js->c != '}')
+            return false;
+        js->off++;
+        return (ret);
+    }
+    return false;
+}
+
+
+bool RuntimeScanner::jsonObj(json_t *js) {
+    js->c = *(js->src + js->off);
+
+    if (js->c != '{' || js->depth > JSON_MAX_DEPTH)
+        return false;
+    js->off++;
+
+    do {
+        jsonForward(js);
+        /* check subs (arrays, objects) */
+        switch (js->c) {
+            case '[': /* array */
+                js->depth++;
+                jsonArray(js);
+                if (!jsonSeek(js, ']'))
+                    return false;
+                js->off++;
+                js->depth--;
+                break;
+            case '{': /* sub-object */
+                js->depth++;
+                jsonObj(js);
+                if (js->c != '}')
+                    return false;
+                js->off++;
+                js->depth--;
+                break;
+            case '"': /* key : value, extract and parse. */
+                if (!jsonQuoted(js, &(js->ckey)))
+                    return false;
+                if (!jsonSeek(js, ':'))
+                    return false;
+                js->off++;
+                jsonForward(js);
+                if (!jsonVal(js))
+                    return false;
+            default:break;
+        }
+        jsonForward(js);
+        /* another element ? */
+        if (js->c == ',') {
+            js->off++;
+            jsonForward(js);
+            continue;
+
+        } else if (js->c == '}') {
+            js->depth--;
+            /* or maybe we just finished parsing this object */
+            return true;
+        } else {
+            /* nothing we expected, die. */
+            return false;
+        }
+    } while (js->off < js->len);
+
+    return false;
+}
+
+/*
+** Parse a JSON request
+*/
+void RuntimeScanner::jsonParse(u_char *src, unsigned long len) {
+    json_t *js = (json_t*) apr_pcalloc(r->pool, sizeof(json_t));
+    if (!js) return;
+    js->json.data = js->src = src;
+    js->json.len = js->len = len;
+
+    if (!jsonSeek(js, '{')) {
+        formatMatch(parser.invalidJson, 1, BODY, "missing opening brace", string(), false);
+        block = true;
+        return;
+    }
+    if (!jsonObj(js)) {
+        formatMatch(parser.invalidJson, 1, BODY, "malformed json object", string(), false);
+        block = true;
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "jsonObj returned error, apply invalid json.");
+        return;
+    }
+    /* we are now on closing bracket, check for garbage. */
+    js->off++;
+    jsonForward(js);
+    if (js->off != js->len) {
+        formatMatch(parser.invalidJson, 1, BODY, "garbage after the closing brace", string(), false);
+        block = true;
+    }
 }

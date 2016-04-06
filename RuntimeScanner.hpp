@@ -41,6 +41,24 @@ using std::distance;
 using std::unordered_map;
 using std::transform;
 
+/*
+** To avoid getting DoS'ed, define max depth
+** for JSON parser, as it is recursive
+*/
+#define JSON_MAX_DEPTH 10
+
+/*
+** this structure is used only for json parsing.
+*/
+typedef struct {
+    str_t json;
+    u_char *src;
+    unsigned long off, len;
+    u_char c;
+    int depth;
+    str_t ckey;
+} json_t;
+
 enum CONTENT_TYPE {
     URL_ENC = 0, // application/x-www-form-urlencoded
     MULTIPART, // multipart/form-data
@@ -89,6 +107,13 @@ public:
                                   unsigned char **fvarn_start, unsigned char **fvarn_end,
                                   unsigned char **ffilen_start, unsigned char **ffilen_end);
     bool splitUrlEncodedRuleset(char *str, const vector<http_rule_t *> &rules, MATCH_ZONE zone);
+    bool jsonObj(json_t *js);
+    bool jsonVal(json_t *js);
+    bool jsonArray(json_t *js);
+    bool jsonQuoted(json_t *js, str_t *ve);
+    void jsonParse(u_char *src, unsigned long len);
+    bool jsonForward(json_t *js);
+    bool jsonSeek(json_t *js, unsigned char seek);
 };
 
 #endif /* RUNTIMESCANNER_HPP */
