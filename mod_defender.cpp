@@ -106,7 +106,7 @@ static int fixer_upper(request_rec *r) {
     RuntimeScanner *runtimeScanner = defc->vpRuntimeScanner;
 
     /* Check if supported Content-Type */
-    if (runtimeScanner->contentType != URL_ENC && runtimeScanner->contentType != MULTIPART) {
+    if (runtimeScanner->contentType == UNSUPPORTED) {
         return DECLINED;
     }
 
