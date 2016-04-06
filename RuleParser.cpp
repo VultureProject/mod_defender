@@ -21,6 +21,9 @@ RuleParser::RuleParser() {
     uncommonPostBoundary.id = 14;
     uncommonPostBoundary.logMsg = "Uncommon post boundary";
 
+    invalidJson.id = 15;
+    invalidJson.logMsg = "Invalid json";
+
     emptyPostBody.id = 16;
     emptyPostBody.logMsg = "Empty post body";
 

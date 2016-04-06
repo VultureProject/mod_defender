@@ -243,6 +243,7 @@ public:
     http_rule_t uncommonUrl;
     http_rule_t uncommonPostFormat;
     http_rule_t uncommonPostBoundary;
+    http_rule_t invalidJson;
     http_rule_t emptyPostBody;
     http_rule_t libsqliRule;
     http_rule_t libxssRule;
