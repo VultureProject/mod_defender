@@ -41,6 +41,8 @@ using std::distance;
 using std::unordered_map;
 using std::transform;
 
+const std::string empty = string();
+
 /*
 ** To avoid getting DoS'ed, define max depth
 ** for JSON parser, as it is recursive
@@ -97,8 +99,8 @@ public:
     bool processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch);
     void applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name, const string &value,
                         MATCH_ZONE zone, bool targetName);
-    void formatMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
-                     const string &value, bool targetName);
+    void applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
+                        const string &value, bool targetName);
     int processBody();
     void writeLearningLog();
     bool parseFormDataBoundary(unsigned char **boundary, unsigned long *boundary_len);

@@ -2,20 +2,17 @@
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-#include "Util.h"
 
-void RuntimeScanner::formatMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
-                                 const string &value, bool targetName) {
+void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
+                                    const string &value, bool targetName) {
     if (!scfg->learning)
         return;
 
-    stringstream ss;
     if (rulesMatchedCount > 0)
-        ss << "&";
-
-    ss << "zone" << rulesMatchedCount << "=" << match_zones[zone] << "&";
-    ss << "id" << rulesMatchedCount << "=" << rule.id << "&";
-    ss << "var_name" << rulesMatchedCount << "=" << name;
+        matchVars << "&";
+    matchVars << "zone" << rulesMatchedCount << "=" << match_zones[zone] << "&";
+    matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
+    matchVars << "var_name" << rulesMatchedCount << "=" << name;
 
     cerr << formatLog(DEFLOG_ERROR, r->useragent_ip);
     cerr << KRED "⚠ Rule #" << rule.id << " ";
@@ -23,9 +20,13 @@ void RuntimeScanner::formatMatch(const http_rule_t &rule, unsigned long nbMatch,
     cerr << "matched " << nbMatch << " times ";
     if (targetName)
         cerr << "in name ";
-    cerr << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
+    cerr << "at " << match_zones[zone] << " ";
+    cerr << name;
+    if (!value.empty())
+        cerr << ":" << value;
+    cerr << KNRM << endl;
 
-    matchVars << ss.str();
+    rulesMatchedCount++;
 }
 
 void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
@@ -71,8 +72,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
             applyCheckRuleAction(checkRule.action);
     }
 
-    formatMatch(rule, nbMatch, zone, name, value, targetName);
-    rulesMatchedCount++;
+    applyRuleMatch(rule, nbMatch, zone, name, value, targetName);
 }
 
 bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
@@ -200,7 +200,7 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
             if (libinjection_is_sqli(&state)) {
                 http_rule_t &sqliRule = parser.libsqliRule;
                 sqliRule.logMsg = state.fingerprint;
-                formatMatch(sqliRule, 1, zone, name, value, false);
+                applyRuleMatch(sqliRule, 1, zone, name, value, false);
             }
         }
 
@@ -210,18 +210,18 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
             if (libinjection_is_sqli(&state)) {
                 http_rule_t &sqliRule = parser.libsqliRule;
                 sqliRule.logMsg = state.fingerprint;
-                formatMatch(sqliRule, 1, zone, name, value, true);
+                applyRuleMatch(sqliRule, 1, zone, name, value, true);
             }
         }
     }
 
     if (scfg->libinjection_xss) {
         if (szValue && libinjection_xss(szValue, valueLen)) {
-            formatMatch(parser.libxssRule, 1, zone, name, value, false);
+            applyRuleMatch(parser.libxssRule, 1, zone, name, value, false);
         }
 
         if (szName && libinjection_xss(szName, nameLen)) {
-            formatMatch(parser.libxssRule, 1, zone, name, value, true);
+            applyRuleMatch(parser.libxssRule, 1, zone, name, value, true);
         }
     }
 }
@@ -337,7 +337,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         if (boundary && boundary_len > 1)
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
                          boundary_len);
-        formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", string(), false);
+        applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", empty, false);
         block = true;
         return;
     }
@@ -352,8 +352,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
                 strncmp((const char *) src + idx + 2, (const char *) boundary, boundary_len) ||
                 strncmp((const char *) src + idx + boundary_len + 2, "--", 2)) {
                 /* bad closing boundary ?*/
-                formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad closing boundary",
-                            (const char *) boundary, false);
+                applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad closing boundary",
+                               (const char *) boundary, false);
                 block = true;
                 return;
             } else
@@ -369,8 +369,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             /* and if it's followed by \r\n */
             src[idx + boundary_len + 2] != '\r' || src[idx + boundary_len + 3] != '\n') {
             /* bad boundary */
-            formatMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad boundary",
-                        (const char *) boundary, false);
+            applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad boundary",
+                           (const char *) boundary, false);
             block = true;
             return;
         }
@@ -385,28 +385,28 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         ** <DATA>
         */
         if (strncasecmp((const char *) src + idx, "content-disposition: form-data;", 31)) {
-            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : unknown content-disposition",
-                        (const char *) src + idx, false);
+            applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : unknown content-disposition",
+                           (const char *) src + idx, false);
             block = true;
             return;
         }
         idx += 31;
         line_end = (u_char *) strchr((const char *) src + idx, '\n');
         if (!line_end) {
-            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed boundary line", string(), false);
+            applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed boundary line", empty, false);
             block = true;
             return;
         }
         /* Parse content-disposition, extract name / filename */
         varn_start = varn_end = filen_start = filen_end = NULL;
         if (!contentDispositionParser(src + idx, line_end, &varn_start, &varn_end, &filen_start, &filen_end)) {
-            formatMatch(parser.uncommonPostFormat, 1, BODY, string(), string(), false);
+            applyRuleMatch(parser.uncommonPostFormat, 1, BODY, empty, empty, false);
             block = true;
             return;
         }
         /* var name is mandatory */
         if (!varn_start || !varn_end || varn_end <= varn_start) {
-            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : no 'name' in POST var", string(), false);
+            applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : no 'name' in POST var", empty, false);
             block = true;
             return;
         }
@@ -416,8 +416,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         if (filen_start && filen_end) {
             line_end = (u_char *) strchr((const char *) line_end + 1, '\n');
             if (!line_end) {
-                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed filename (no content-type ?)",
-                            string(), false);
+                applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed filename (no content-type ?)",
+                               empty, false);
                 block = true;
                 return;
             }
@@ -428,8 +428,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         */
         idx += line_end - (src + idx) + 1;
         if (src[idx] != '\r' || src[idx + 1] != '\n') {
-            formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", string(),
-                        false);
+            applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", empty,
+                           false);
             block = true;
             return;
         }
@@ -449,8 +449,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
                     break;
             }
             if (!end) {
-                formatMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line",
-                            string(), false);
+                applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line",
+                               empty, false);
                 block = true;
                 return;
             }
@@ -472,12 +472,12 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             final_data.len = filen_end - filen_start;
             nullbytes = naxsi_unescape(&final_var);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), true);
+                applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, true);
                 block = true;
             }
             nullbytes = naxsi_unescape(&final_data);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), false);
+                applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, false);
                 block = true;
             }
 
@@ -499,12 +499,12 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             final_data.len = varc_len;
             nullbytes = naxsi_unescape(&final_var);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), true);
+                applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, true);
                 block = true;
             }
             nullbytes = naxsi_unescape(&final_data);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonHexEncoding, 1, BODY, string(), string(), false);
+                applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, false);
                 block = true;
             }
 
@@ -565,7 +565,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
         else if (!eq) {
             ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "XX-url has no '=' but has '&' [%s]", str);
 
-            formatMatch(parser.uncommonUrl, 1, zone, string(), string(), false);
+            applyRuleMatch(parser.uncommonUrl, 1, zone, empty, empty, false);
             if (ev > str) /* ?var& | ?var&val */ {
                 val.data = (unsigned char *) str;
                 val.len = ev - str;
@@ -586,7 +586,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
             len = ev - str;
             eq = strnchr(str, '=', len);
             if (!eq) {
-                formatMatch(parser.uncommonUrl, 1, zone, "malformed url, possible attack", string(), false);
+                applyRuleMatch(parser.uncommonUrl, 1, zone, "malformed url, possible attack", empty, false);
                 return true;
             }
             eq++;
@@ -598,13 +598,13 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
         if (name.len) {
             nullbytes = naxsi_unescape(&name);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, true);
+                applyRuleMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, true);
             }
         }
         if (val.len) {
             nullbytes = naxsi_unescape(&val);
             if (nullbytes > 0) {
-                formatMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, false);
+                applyRuleMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, false);
             }
         }
 
@@ -677,7 +677,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
 
     uri = string(r->parsed_uri.path);
     transform(uri.begin(), uri.end(), uri.begin(), tolower);
-    basestrRuleset(URL, string(), uri, parser.genericRules);
+    basestrRuleset(URL, empty, uri, parser.genericRules);
 
     if (r->method_number == M_POST || r->method_number == M_PUT)
         return DECLINED;
@@ -696,7 +696,7 @@ int RuntimeScanner::processBody() {
     }
 
     if (!contentTypeFound) {
-        formatMatch(parser.uncommonContentType, 1, HEADERS, string(), string(), false);
+        applyRuleMatch(parser.uncommonContentType, 1, HEADERS, empty, empty, false);
         return HTTP_FORBIDDEN;
     }
 
@@ -707,7 +707,7 @@ int RuntimeScanner::processBody() {
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
         if (splitUrlEncodedRuleset(&rawBody[0], parser.bodyRules, BODY)) {
-            formatMatch(parser.uncommonUrl, 1, BODY, string(), string(), false);
+            applyRuleMatch(parser.uncommonUrl, 1, BODY, empty, empty, false);
             block = true;
         }
     }
@@ -719,6 +719,7 @@ int RuntimeScanner::processBody() {
     else if (contentType == APP_JSON) {
         jsonParse((u_char *) &rawBody[0], rawBody.length());
     }
+        /* Raw Body */
     else {
         str_t body;
         body.data = (u_char *) &rawBody[0];
@@ -727,7 +728,7 @@ int RuntimeScanner::processBody() {
         naxsi_unescape(&body);
         rawBody.resize(body.len);
 
-        basestrRuleset(RAW_BODY, string(), rawBody, parser.rawBodyRules);
+        basestrRuleset(RAW_BODY, empty, rawBody, parser.rawBodyRules);
     }
 
     writeLearningLog();
@@ -877,7 +878,7 @@ bool RuntimeScanner::jsonVal(json_t *js) {
             transform(value.begin(), value.end(), value.begin(), tolower);
             basestrRuleset(BODY, jsckey, value, parser.bodyRules);
 
-            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) &(js->ckey.data), (char*) &(val.data));
+            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) js->ckey.data, (char*) val.data);
         }
         return ret;
     }
@@ -894,7 +895,7 @@ bool RuntimeScanner::jsonVal(json_t *js) {
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
         basestrRuleset(BODY, jsckey, value, parser.bodyRules);
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) &(js->ckey.data), (char*) &(val.data));
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) js->ckey.data, (char*) val.data);
         return true;
     }
     if (!strncasecmp((const char *) (js->src + js->off), (const char *) "true", 4) ||
@@ -918,7 +919,7 @@ bool RuntimeScanner::jsonVal(json_t *js) {
         transform(value.begin(), value.end(), value.begin(), tolower);
         basestrRuleset(BODY, jsckey, value, parser.bodyRules);
 
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) &(js->ckey.data), (char*) &(val.data));
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) js->ckey.data, (char*) val.data);
         return true;
     }
 
@@ -938,7 +939,7 @@ bool RuntimeScanner::jsonVal(json_t *js) {
         */
         string jsckey = string((char *) js->ckey.data, js->ckey.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
-        basestrRuleset(BODY, jsckey, string(), parser.bodyRules);
+        basestrRuleset(BODY, jsckey, empty, parser.bodyRules);
 
         ret = jsonObj(js);
         jsonForward(js);
@@ -1019,12 +1020,12 @@ void RuntimeScanner::jsonParse(u_char *src, unsigned long len) {
     js->json.len = js->len = len;
 
     if (!jsonSeek(js, '{')) {
-        formatMatch(parser.invalidJson, 1, BODY, "missing opening brace", string(), false);
+        applyRuleMatch(parser.invalidJson, 1, BODY, "missing opening brace", empty, false);
         block = true;
         return;
     }
     if (!jsonObj(js)) {
-        formatMatch(parser.invalidJson, 1, BODY, "malformed json object", string(), false);
+        applyRuleMatch(parser.invalidJson, 1, BODY, "malformed json object", empty, false);
         block = true;
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "jsonObj returned error, apply invalid json.");
         return;
@@ -1033,7 +1034,7 @@ void RuntimeScanner::jsonParse(u_char *src, unsigned long len) {
     js->off++;
     jsonForward(js);
     if (js->off != js->len) {
-        formatMatch(parser.invalidJson, 1, BODY, "garbage after the closing brace", string(), false);
+        applyRuleMatch(parser.invalidJson, 1, BODY, "garbage after the closing brace", empty, false);
         block = true;
     }
 }

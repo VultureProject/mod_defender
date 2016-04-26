@@ -163,7 +163,7 @@ static int fixer_upper(request_rec *r) {
             runtimeScanner->rawBody += string(buf, nbytes);
 
             if (runtimeScanner->rawBody.length() > scfg->requestBodyLimit) {
-                runtimeScanner->formatMatch(parser->bigRequest, 1, BODY, string(), string(), false);
+                runtimeScanner->applyRuleMatch(parser->bigRequest, 1, BODY, empty, empty, false);
                 return -1;
             }
 
