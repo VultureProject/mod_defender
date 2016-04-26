@@ -2,6 +2,7 @@
 #include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
+#include "Util.h"
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
@@ -536,6 +537,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
     char *eq, *ev, *orig;
     unsigned long len, full_len;
     int nullbytes = 0;
+    string key, value;
 
     orig = str;
     full_len = strlen(orig);
@@ -556,9 +558,11 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
                 ev = str + strlen(str);
             /* len is now [name] */
             len = ev - str;
-            val.data = (unsigned char *) str;
-            val.len = ev - str;
-            name.data = (unsigned char *) NULL;
+            value = string(str, ev - str);
+            val.data = (unsigned char *) &value[0];
+            val.len = value.length();
+            key.clear();
+            name.data = NULL;
             name.len = 0;
         }
             /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
@@ -567,9 +571,11 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
 
             applyRuleMatch(parser.uncommonUrl, 1, zone, empty, empty, false);
             if (ev > str) /* ?var& | ?var&val */ {
-                val.data = (unsigned char *) str;
-                val.len = ev - str;
-                name.data = (unsigned char *) NULL;
+                value = string(str, ev - str);
+                val.data = (unsigned char *) &value[0];
+                val.len = value.length();
+                key.clear();
+                name.data = NULL;
                 name.len = 0;
                 len = ev - str;
             }
@@ -590,26 +596,29 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
                 return true;
             }
             eq++;
-            val.data = (unsigned char *) eq;
-            val.len = ev - eq;
-            name.data = (unsigned char *) str;
-            name.len = eq - str - 1;
+            key = string(str, eq - str - 1);
+            name.data = (unsigned char *) &key[0];
+            name.len = key.length();
+            value = string(eq, ev - eq);
+            val.data = (unsigned char *) &value[0];
+            val.len = value.length();
         }
+
         if (name.len) {
             nullbytes = naxsi_unescape(&name);
+            key.resize(name.len);
             if (nullbytes > 0) {
                 applyRuleMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, true);
             }
         }
         if (val.len) {
             nullbytes = naxsi_unescape(&val);
+            value.resize(val.len);
             if (nullbytes > 0) {
                 applyRuleMatch(parser.uncommonUrl, 1, zone, (char *) name.data, (char *) val.data, false);
             }
         }
 
-        string key = string((char *) name.data, name.len);
-        string value = string((char *) val.data, val.len);
 //        cerr << key << ":" << value << endl;
         transform(key.begin(), key.end(), key.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
@@ -617,7 +626,6 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t 
 
         str += len;
     }
-
     return false;
 }
 
