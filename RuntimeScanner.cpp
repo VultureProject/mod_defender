@@ -44,6 +44,8 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
                                     const string &value, MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
+        if (!scfg->learning)
+            return;
         cerr << formatLog(DEFLOG_WARN, r->useragent_ip);
         cerr << KGRN "✓ Rule #" << rule.id << " ";
         cerr << "(" << rule.logMsg << ") ";
