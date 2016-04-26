@@ -640,7 +640,6 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         string key = string(headerEntry[i].key);
         string val = string(headerEntry[i].val);
         transform(key.begin(), key.end(), key.begin(), tolower);
-        transform(val.begin(), val.end(), val.begin(), tolower);
         /* Retrieve Content-Length */
         if (key == "content-length") {
             try {
@@ -653,7 +652,6 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         }
             /* Store Content-Type for further processing */
         else if (key == "content-type") {
-//            cerr << key << ": " << val << endl;
             if (caseEqual(val, "application/x-www-form-urlencoded")) {
                 contentType = URL_ENC;
             }
@@ -666,6 +664,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
             }
             contentTypeFound = true;
         }
+        transform(val.begin(), val.end(), val.begin(), tolower);
         basestrRuleset(HEADERS, key, val, parser.headerRules);
     }
 
