@@ -30,14 +30,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     /etc/apache2/mods-available/defender.load > /dev/null
 	```
 
-1. Create its module conf file for Apache2
-	```sh
-    $ cat <<EOT | sudo tee /etc/apache2/mods-available/defender.conf > /dev/null
-    <IfModule defender_module>
-        Include /etc/moddefender/*.conf
-    </IfModule>
-    EOT
-    ```
+1. Add `Include /etc/moddefender/*.conf` in the desired section of your virtual host config
 
 1. Create Mod Defender conf directory
     ```sh
