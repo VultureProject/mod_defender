@@ -36,8 +36,7 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, s
     apr_pool_userdata_get(&init_flag, "moddefender-init-flag", s->process->pool);
     if (init_flag == NULL) {
         apr_pool_userdata_set((const void *) 1, "moddefender-init-flag", apr_pool_cleanup_null, s->process->pool);
-    }
-    else {
+    } else {
         parser->parseMainRules(*tmpMainRules);
         ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%lu CheckRules loaded", parser->checkRules.size());
         parser->parseBasicRules(*tmpBasicRules);
@@ -60,9 +59,6 @@ static int post_read_request(request_rec *r) {
         return HTTP_SERVICE_UNAVAILABLE;
 
     RuntimeScanner *runtimeScanner = new RuntimeScanner(scfg, *parser);
-
-    if (runtimeScanner == nullptr)
-        return HTTP_SERVICE_UNAVAILABLE;
 
     /* Register a C function to delete runtimeScanner
        at the end of the request cycle. */
@@ -117,7 +113,7 @@ static int fixer_upper(request_rec *r) {
     apr_bucket_brigade *bb_in = apr_brigade_create(r->pool, r->connection->bucket_alloc);
     if (bb_in == NULL) return -1;
     do {
-        int rc = ap_get_brigade(r->input_filters, bb_in, AP_MODE_READBYTES, APR_BLOCK_READ, HUGE_STRING_LEN);
+        int rc = ap_get_brigade(r->input_filters, bb_in, AP_MODE_SPECULATIVE, APR_BLOCK_READ, runtimeScanner->contentLength);
         if (rc != APR_SUCCESS) {
             switch (rc) {
                 case APR_EOF:
@@ -150,6 +146,14 @@ static int fixer_upper(request_rec *r) {
         }
         for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb_in);
              bucket != APR_BRIGADE_SENTINEL(bb_in); bucket = APR_BUCKET_NEXT(bucket)) {
+            if (APR_BUCKET_IS_EOS(bucket)) {
+                eos = true;
+            }
+
+            if (APR_BUCKET_IS_FLUSH(bucket)) {
+                continue;
+            }
+
             const char *buf;
             apr_size_t nbytes;
 
@@ -160,6 +164,12 @@ static int fixer_upper(request_rec *r) {
                 return -1;
             }
 
+            if (runtimeScanner->rawBody.length() + nbytes > runtimeScanner->contentLength) {
+                eos = true;
+                ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Too much POST data");
+                break;
+            }
+
             runtimeScanner->rawBody += string(buf, nbytes);
 
             if (runtimeScanner->rawBody.length() > scfg->requestBodyLimit) {
@@ -167,49 +177,18 @@ static int fixer_upper(request_rec *r) {
                 return -1;
             }
 
-            if (APR_BUCKET_IS_EOS(bucket)) {
+            if (runtimeScanner->rawBody.length() == runtimeScanner->contentLength) {
                 eos = true;
+                break;
             }
         }
 
         apr_brigade_cleanup(bb_in);
     } while (!eos);
-
-//    cerr << runtimeScanner->rawBody << endl;
-//    cerr << runtimeScanner->rawBody.length() << endl;
+//    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "post data (%lu): %s", runtimeScanner->rawBody.length(),
+//                  runtimeScanner->rawBody.c_str());
 
     return runtimeScanner->processBody();
-}
-
-static int input_filter(ap_filter_t *f, apr_bucket_brigade *bb_out,
-                        ap_input_mode_t mode, apr_read_type_e block, apr_off_t nbytes) {
-    if (mode != AP_MODE_READBYTES) {
-        return ap_get_brigade(f->next, bb_out, mode, block, nbytes);
-    }
-
-    defender_config_t *defc = (defender_config_t *) ap_get_module_config(f->r->request_config, &defender_module);
-    RuntimeScanner *runtimeScanner = defc->vpRuntimeScanner;
-
-    /* Remove the input filter */
-    ap_remove_input_filter(f);
-
-    /* Check if there is something to forward */
-    if (runtimeScanner->rawBody.empty()) {
-        return APR_SUCCESS;
-    }
-
-    /* Forward the body */
-    apr_bucket *bucket = apr_bucket_heap_create(runtimeScanner->rawBody.c_str(), runtimeScanner->rawBody.length(),
-                                                NULL, f->r->connection->bucket_alloc);
-    APR_BRIGADE_INSERT_TAIL(bb_out, bucket);
-
-    return APR_SUCCESS;
-}
-
-static const char *filter_in = "moddefender-in";
-
-static void hook_insert_filter(request_rec *r) {
-    ap_add_input_filter(filter_in, NULL, r, r->connection);
 }
 
 /* Apache callback to register our hooks.
@@ -219,8 +198,6 @@ static void defender_register_hooks(apr_pool_t *p) {
     ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_LAST);
     ap_hook_post_read_request(post_read_request, NULL, NULL, APR_HOOK_REALLY_FIRST);
     ap_hook_fixups(fixer_upper, NULL, NULL, APR_HOOK_REALLY_FIRST);
-    ap_hook_insert_filter(hook_insert_filter, NULL, NULL, APR_HOOK_FIRST);
-    ap_register_input_filter(filter_in, input_filter, NULL, AP_FTYPE_CONTENT_SET);
 }
 
 /**
@@ -241,8 +218,7 @@ static const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *ar
             return apr_psprintf(cmd->pool, "mod_defender: Failed to open the errorlog pipe: %s", pipe_name);
         }
         scfg->errorlog_fd = ap_piped_log_write_fd(pipe_log);
-    }
-    else {
+    } else {
         const char *file_name = ap_server_root_relative(cmd->pool, scfg->errorlog_path);
         apr_status_t rc;
 
