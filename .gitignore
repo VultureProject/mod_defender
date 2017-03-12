@@ -1,1 +1,12 @@
+*.o
+*.so
+*.a
+.idea/
+conf/
+cmake-build-debug/
 lib/
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
