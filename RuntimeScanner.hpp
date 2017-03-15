@@ -95,7 +95,7 @@ public:
     void applyCheckRuleAction(const rule_action_t &action);
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
-                        const vector<http_rule_t*> &rules);
+                        const vector<http_rule_t> &rules);
     bool processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch);
     void applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name, const string &value,
                         MATCH_ZONE zone, bool targetName);
@@ -108,7 +108,7 @@ public:
     bool contentDispositionParser(unsigned char *str, unsigned char *line_end,
                                   unsigned char **fvarn_start, unsigned char **fvarn_end,
                                   unsigned char **ffilen_start, unsigned char **ffilen_end);
-    bool splitUrlEncodedRuleset(char *str, const vector<http_rule_t *> &rules, MATCH_ZONE zone);
+    bool splitUrlEncodedRuleset(char *str, const vector<http_rule_t> &rules, MATCH_ZONE zone);
     bool jsonObj(json_t *js);
     bool jsonVal(json_t *js);
     bool jsonArray(json_t *js);

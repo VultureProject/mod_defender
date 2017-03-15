@@ -10,10 +10,10 @@ typedef struct {
     RuntimeScanner *vpRuntimeScanner;
 } defender_config_t;
 
-static RuleParser *parser = nullptr;
+static RuleParser parser;
 
-static vector<string> *tmpMainRules;
-static vector<string> *tmpBasicRules;
+static vector<string> tmpMainRules;
+static vector<string> tmpBasicRules;
 
 /* Custom function to ensure our RuntimeScanner get's deleted at the
    end of the request cycle. */
@@ -23,30 +23,21 @@ static apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     return OK;
 }
 
-static int pre_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp) {
-    parser = new RuleParser();
-    tmpMainRules = new vector<string>();
-    tmpBasicRules = new vector<string>();
-    return OK;
-}
-
 static int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s) {
     /* Figure out if we are here for the first time */
     void *init_flag = NULL;
     apr_pool_userdata_get(&init_flag, "moddefender-init-flag", s->process->pool);
-    if (init_flag == NULL) {
+    if (init_flag == NULL) { // first load
         apr_pool_userdata_set((const void *) 1, "moddefender-init-flag", apr_pool_cleanup_null, s->process->pool);
-    } else {
-        parser->parseMainRules(*tmpMainRules);
-        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%lu CheckRules loaded", parser->checkRules.size());
-        parser->parseBasicRules(*tmpBasicRules);
-        parser->generateHashTables();
+        tmpMainRules.clear();
+        tmpBasicRules.clear();
+    } else { // second (last) load
+        parser.parseMainRules(tmpMainRules);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%lu CheckRules loaded", parser.checkRules.size());
+        parser.parseBasicRules(tmpBasicRules);
+        parser.generateHashTables();
 
         ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initialized successfully");
-
-        /* clear the temporary arrays */
-        delete tmpMainRules;
-        delete tmpBasicRules;
     }
     return OK;
 }
@@ -55,10 +46,7 @@ static int post_read_request(request_rec *r) {
     // Get the module configuration
     server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
 
-    if (parser == nullptr)
-        return HTTP_SERVICE_UNAVAILABLE;
-
-    RuntimeScanner *runtimeScanner = new RuntimeScanner(scfg, *parser);
+    RuntimeScanner *runtimeScanner = new RuntimeScanner(scfg, parser);
 
     /* Register a C function to delete runtimeScanner
        at the end of the request cycle. */
@@ -173,7 +161,7 @@ static int fixer_upper(request_rec *r) {
             runtimeScanner->rawBody += string(buf, nbytes);
 
             if (runtimeScanner->rawBody.length() > scfg->requestBodyLimit) {
-                runtimeScanner->applyRuleMatch(parser->bigRequest, 1, BODY, empty, empty, false);
+                runtimeScanner->applyRuleMatch(parser.bigRequest, 1, BODY, empty, empty, false);
                 return -1;
             }
 
@@ -194,7 +182,6 @@ static int fixer_upper(request_rec *r) {
 /* Apache callback to register our hooks.
  */
 static void defender_register_hooks(apr_pool_t *p) {
-    ap_hook_pre_config(pre_config, NULL, NULL, APR_HOOK_FIRST);
     ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_LAST);
     ap_hook_post_read_request(post_read_request, NULL, NULL, APR_HOOK_REALLY_FIRST);
     ap_hook_fixups(fixer_upper, NULL, NULL, APR_HOOK_REALLY_FIRST);
@@ -269,16 +256,16 @@ static const char *set_mainrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
     if (!strcmp(arg, ";")) {
         return NULL;
     }
-    tmpMainRules->push_back(arg);
+    tmpMainRules.push_back(arg);
     return NULL;
 }
 
 static const char *set_checkrules(cmd_parms *cmd, void *_dcfg, const char *arg1, const char *arg2) {
-    return parser->parseCheckRule(cmd->pool, arg1, arg2);
+    return parser.parseCheckRule(cmd->pool, arg1, arg2);
 }
 
 static const char *set_basicrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
-    tmpBasicRules->push_back(arg);
+    tmpBasicRules.push_back(arg);
     return NULL;
 }
 

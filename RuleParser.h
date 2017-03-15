@@ -106,7 +106,7 @@ typedef struct {
     bool argsVar = false; // match in [name] var of args
     bool specificUrl = false; // match on URL [name]
     string target; // to be used for string match zones
-    regex *targetRx = nullptr; // to be used for regexed match zones
+    regex targetRx; // to be used for regexed match zones
 } custom_rule_location_t;
 
 /*
@@ -175,7 +175,8 @@ typedef struct {
 } whitelist_rule_t;
 
 typedef struct {
-    regex *rx = nullptr;
+    bool active = false; // to check if there is a basic rule or not
+    regex rx;
     string str;
     bool rxMz = false;
     MATCH_ZONE zone;
@@ -210,7 +211,7 @@ typedef struct {
     string logMsg; // a specific log message
     /* List of scores increased on rule match. */
     vector<pair<string, unsigned long>> scores;
-    basic_rule_t *br; // specific rule stuff
+    basic_rule_t br; // specific rule stuff
 } http_rule_t;
 
 class RuleParser {
@@ -223,11 +224,11 @@ private:
 
 public:
     unordered_map<string, check_rule_t> checkRules;
-    vector<http_rule_t*> getRules;
-    vector<http_rule_t*> bodyRules;
-    vector<http_rule_t*> rawBodyRules;
-    vector<http_rule_t*> headerRules;
-    vector<http_rule_t*> genericRules; // URL
+    vector<http_rule_t> getRules;
+    vector<http_rule_t> bodyRules;
+    vector<http_rule_t> rawBodyRules;
+    vector<http_rule_t> headerRules;
+    vector<http_rule_t> genericRules; // URL
 
     vector<whitelist_rule_t> tmpWlr; // raw array of transformed whitelists
     vector<http_rule_t> rxMzWlr; // raw array of regex-mz whitelists

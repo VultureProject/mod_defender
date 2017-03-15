@@ -39,18 +39,18 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
     for (int i = 0; i < rulesArray.size(); i += 5) {
         bool error = false;
         DEBUG_CONF_MR("MainRule ");
-        http_rule_t *rule = new http_rule_t;
-        rule->br = new basic_rule_t;
-        rule->type = MAIN_RULE;
+        http_rule_t rule;
+        rule.br.active = true;
+        rule.type = MAIN_RULE;
         if (rulesArray[i] == "negative") {
-            rule->br->negative = true;
+            rule.br.negative = true;
             DEBUG_CONF_MR("negative ");
             i++;
         }
         pair<string, string> matchPatern = splitAtFirst(rulesArray[i], ":");
         if (matchPatern.first == "rx") {
             try {
-                rule->br->rx = new regex(matchPatern.second, std::regex::optimize);
+                rule.br.rx = regex(matchPatern.second, std::regex::optimize);
             } catch (std::regex_error &e) {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPatern.second.c_str(),
                              parseCode(e.code()).c_str());
@@ -59,26 +59,26 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
             DEBUG_CONF_MR("rx " << matchPatern.second << " ");
         }
         if (matchPatern.first == "str") {
-            rule->br->str = matchPatern.second;
-            DEBUG_CONF_MR("str " << rule->br->str << " ");
+            rule.br.str = matchPatern.second;
+            DEBUG_CONF_MR("str " << rule.br.str << " ");
         }
 
-        rule->logMsg = rulesArray[i + 1].substr(4);
-        DEBUG_CONF_MR(rule->logMsg << " ");
+        rule.logMsg = rulesArray[i + 1].substr(4);
+        DEBUG_CONF_MR(rule.logMsg << " ");
 
         string rawMatchZone = rulesArray[i + 2].substr(3);
-        parseMatchZone(*rule, rawMatchZone);
+        parseMatchZone(rule, rawMatchZone);
 
         string score = rulesArray[i + 3].substr(2);
         vector<string> scores = split(score, ',');
         for (const string &sc : scores) {
             pair<string, string> scorepair = splitAtFirst(sc, ":");
-            rule->scores.emplace_back(scorepair.first, std::stoul(scorepair.second));
+            rule.scores.emplace_back(scorepair.first, std::stoul(scorepair.second));
             DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
         }
 
-        rule->id = std::stoul(rulesArray[i + 4].substr(3));
-        DEBUG_CONF_MR(rule->id << " ");
+        rule.id = std::stoul(rulesArray[i + 4].substr(3));
+        DEBUG_CONF_MR(rule.id << " ");
 
         if (!error) {
             /*
@@ -86,24 +86,24 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
              * "issue: Multiple *_VAR lead to multiple matching"
              * Handled here (enhancement)
              */
-            if (rule->br->headersMz || rule->br->headersVarMz) { // push in headers rules
+            if (rule.br.headersMz || rule.br.headersVarMz) { // push in headers rules
                 headerRules.push_back(rule);
                 DEBUG_CONF_MR("[header] ");
             }
-            if (rule->br->bodyMz || rule->br->bodyVarMz) { // push in body match rules (POST/PUT)
+            if (rule.br.bodyMz || rule.br.bodyVarMz) { // push in body match rules (POST/PUT)
                 bodyRules.push_back(rule);
                 DEBUG_CONF_MR("[body] ");
             }
-            if (rule->br->rawBodyMz) { // push in raw body match rules (POST/PUT)
+            if (rule.br.rawBodyMz) { // push in raw body match rules (POST/PUT)
                 rawBodyRules.push_back(rule);
                 DEBUG_CONF_MR("[rawbody] ");
             }
-            if (rule->br->urlMz || rule->br->specificUrlMz) { // push in generic rules, as it's matching the URI
+            if (rule.br.urlMz || rule.br.specificUrlMz) { // push in generic rules, as it's matching the URI
                 genericRules.push_back(rule);
                 DEBUG_CONF_MR("[generic] ");
             }
-            if (rule->br->argsMz ||
-                rule->br->argsVarMz) { // push in GET arg rules, but we should push in POST rules too
+            if (rule.br.argsMz ||
+                rule.br.argsVarMz) { // push in GET arg rules, but we should push in POST rules too
                 getRules.push_back(rule);
                 DEBUG_CONF_MR("[get] ");
             }
@@ -112,7 +112,7 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
         if (!error)
             ruleCount++;
         else
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%lu skipped", rule->id);
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%lu skipped", rule.id);
         DEBUG_CONF_MR(endl);
     }
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d MainRules loaded", ruleCount);
@@ -196,7 +196,7 @@ void RuleParser::parseBasicRules(vector<string> rulesArray) {
         }
 
         string rawMatchZone = rulesArray[i + 1].substr(3);
-        rule.br = new basic_rule_t;
+        rule.br.active = true;
         parseMatchZone(rule, rawMatchZone);
 
         whitelistRules.push_back(rule);
@@ -211,122 +211,122 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
     for (const string &mz : matchZones) {
         if (mz[0] != '$') {
             if (mz == "ARGS") {
-                rule.br->argsMz = true;
+                rule.br.argsMz = true;
                 DEBUG_CONF_MZ("ARGS ");
             }
             else if (mz == "HEADERS") {
-                rule.br->headersMz = true;
+                rule.br.headersMz = true;
                 DEBUG_CONF_MZ("HEADERS ");
             }
             else if (mz == "URL") {
-                rule.br->urlMz = true;
+                rule.br.urlMz = true;
                 DEBUG_CONF_MZ("URL ");
             }
             else if (mz == "BODY") {
-                rule.br->bodyMz = true;
+                rule.br.bodyMz = true;
                 DEBUG_CONF_MZ("BODY ");
             }
             else if (mz == "RAWBODY") {
-                rule.br->rawBodyMz = true;
+                rule.br.rawBodyMz = true;
                 DEBUG_CONF_MZ("RAWBODY ");
             }
             else if (mz == "FILE_EXT") {
-                rule.br->fileExtMz = true;
-                rule.br->bodyMz = true;
+                rule.br.fileExtMz = true;
+                rule.br.bodyMz = true;
                 DEBUG_CONF_MZ("FILE_EXT ");
             }
             else if (mz == "NAME") {
-                rule.br->targetName = true;
+                rule.br.targetName = true;
                 DEBUG_CONF_MZ("NAME ");
             }
         }
         else {
             custom_rule_location_t customRule;
-            rule.br->customLocation = true;
+            rule.br.customLocation = true;
             pair<string, string> cmz = splitAtFirst(mz, ":");
 
             if (cmz.first == "$ARGS_VAR") {
                 customRule.argsVar = true;
-                rule.br->argsVarMz = true;
+                rule.br.argsVarMz = true;
                 DEBUG_CONF_MZ("$ARGS_VAR ");
             }
             else if (cmz.first == "$HEADERS_VAR") {
                 customRule.headersVar = true;
-                rule.br->headersVarMz = true;
+                rule.br.headersVarMz = true;
                 DEBUG_CONF_MZ("$HEADERS_VAR ");
             }
             else if (cmz.first == "$URL") {
                 customRule.specificUrl = true;
-                rule.br->specificUrlMz = true;
+                rule.br.specificUrlMz = true;
                 DEBUG_CONF_MZ("$URL ");
             }
             else if (cmz.first == "$BODY_VAR") {
                 customRule.bodyVar = true;
-                rule.br->bodyVarMz = true;
+                rule.br.bodyVarMz = true;
                 DEBUG_CONF_MZ("$BODY_VAR ");
             }
 
             else if (cmz.first == "$ARGS_VAR_X") {
                 customRule.argsVar = true;
-                rule.br->argsVarMz = true;
-                rule.br->rxMz = true;
+                rule.br.argsVarMz = true;
+                rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$ARGS_VAR_X ");
             }
             else if (cmz.first == "$HEADERS_VAR_X") {
                 customRule.headersVar = true;
-                rule.br->headersVarMz = true;
-                rule.br->rxMz = true;
+                rule.br.headersVarMz = true;
+                rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$HEADERS_VAR_X ");
             }
             else if (cmz.first == "$URL_X") {
                 customRule.specificUrl = true;
-                rule.br->specificUrlMz = true;
-                rule.br->rxMz = true;
+                rule.br.specificUrlMz = true;
+                rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$URL_X ");
             }
             else if (cmz.first == "$BODY_VAR_X") {
                 customRule.bodyVar = true;
-                rule.br->bodyVarMz = true;
-                rule.br->rxMz = true;
+                rule.br.bodyVarMz = true;
+                rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$BODY_VAR_X ");
             }
 
-            if (!rule.br->rxMz) { // String MatchZone
+            if (!rule.br.rxMz) { // String MatchZone
                 std::transform(cmz.second.begin(), cmz.second.end(), cmz.second.begin(), tolower);
                 customRule.target = cmz.second;
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
             }
             else { // Regex MatchZone
                 try {
-                    customRule.targetRx = new regex(cmz.second, std::regex::optimize);
+                    customRule.targetRx = regex(cmz.second, std::regex::optimize);
                 } catch (std::regex_error &e) {
                     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
                     continue;
                 }
                 DEBUG_CONF_MZ("(rx)" << cmz.second << " ");
             }
-            rule.br->customLocations.push_back(customRule);
+            rule.br.customLocations.push_back(customRule);
         }
     }
-    DEBUG_CONF_MZ((rule.br->rxMz ? "(rxMz) " : " "));
+    DEBUG_CONF_MZ((rule.br.rxMz ? "(rxMz) " : " "));
 }
 
 /* check rule, returns associed zone, as well as location index.
   location index refers to $URL:bla or $ARGS_VAR:bla */
 void RuleParser::wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uriIndex, int &nameIndex) {
-    if (curr.br->bodyMz || curr.br->bodyVarMz)
+    if (curr.br.bodyMz || curr.br.bodyVarMz)
         zone = BODY;
-    else if (curr.br->headersMz || curr.br->headersVarMz)
+    else if (curr.br.headersMz || curr.br.headersVarMz)
         zone = HEADERS;
-    else if (curr.br->argsMz || curr.br->argsVarMz)
+    else if (curr.br.argsMz || curr.br.argsVarMz)
         zone = ARGS;
-    else if (curr.br->urlMz) /*don't assume that named $URL means zone is URL.*/
+    else if (curr.br.urlMz) /*don't assume that named $URL means zone is URL.*/
         zone = URL;
-    else if (curr.br->fileExtMz)
+    else if (curr.br.fileExtMz)
         zone = FILE_EXT;
 
-    for (int i = 0; i < curr.br->customLocations.size(); i++) {
-        const custom_rule_location_t &loc = curr.br->customLocations[i];
+    for (int i = 0; i < curr.br.customLocations.size(); i++) {
+        const custom_rule_location_t &loc = curr.br.customLocations[i];
         if (loc.specificUrl) {
             uriIndex = i;
         }
@@ -361,21 +361,21 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
                          int &nameIndex) {
     string fullname = "";
     /* if WL targets variable name instead of content, prefix hash with '#' */
-    if (curr.br->targetName) {
+    if (curr.br.targetName) {
         DEBUG_CONF_WLRF("whitelist targets |NAME");
         fullname += "#";
     }
     if (uriIndex != -1 && nameIndex != -1) { // name AND uri
         DEBUG_CONF_WLRF("whitelist has uri + name");
-        fullname += curr.br->customLocations[uriIndex].target + "#" + curr.br->customLocations[nameIndex].target;
+        fullname += curr.br.customLocations[uriIndex].target + "#" + curr.br.customLocations[nameIndex].target;
     }
     else if (uriIndex != -1) { // only uri
         DEBUG_CONF_WLRF("whitelist has uri");
-        fullname += curr.br->customLocations[uriIndex].target;
+        fullname += curr.br.customLocations[uriIndex].target;
     }
     else if (nameIndex != -1) { // only name
         DEBUG_CONF_WLRF("whitelist has name");
-        fullname += curr.br->customLocations[nameIndex].target;
+        fullname += curr.br.customLocations[nameIndex].target;
     }
     else {
         DEBUG_CONF_WLRF("wlrFind problem");
@@ -400,8 +400,8 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
 	 so that WL system won't get fooled by an argname like an URL */
     if (uriIndex != -1 && nameIndex == -1)
         father_wlr.uriOnly = true;
-    if (curr.br->targetName) // If targetName is present in son, report it
-        father_wlr.targetName = curr.br->targetName;
+    if (curr.br.targetName) // If targetName is present in son, report it
+        father_wlr.targetName = curr.br.targetName;
 }
 
 /*
@@ -423,19 +423,19 @@ void RuleParser::generateHashTables() {
         MATCH_ZONE zone = UNKNOWN;
 
         /* no custom location at all means that the rule is disabled */
-        if (curr_r.br->customLocations.empty()) {
+        if (curr_r.br.customLocations.empty()) {
             disabled_rules.push_back(curr_r);
             continue;
         }
         wlrIdentify(curr_r, zone, uriIndex, nameIndex);
-        curr_r.br->zone = zone;
+        curr_r.br.zone = zone;
 
         /*
         ** Handle regular-expression-matchzone rules :
         ** Store them in a separate linked list, parsed
         ** at runtime.
         */
-        if (curr_r.br->rxMz) {
+        if (curr_r.br.rxMz) {
             /*
              * Naxsi converts custom location string target to regex target here,
              * because it does not handle whitelist that mix _X elements with _VAR or $URL items.
@@ -554,47 +554,47 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
         if (checkIds(rule.id, disabledRule.wlIds)) { // Is rule disabled ?
-            if (!disabledRule.br) { // if it doesn't specify zone, skip zone-check
+            if (!disabledRule.br.active) { // if it doesn't specify zone, skip zone-check
                 continue;
             }
 
             /* If rule target nothing, it's whitelisted everywhere */
-            if (!(disabledRule.br->argsMz || disabledRule.br->headersMz ||
-                  disabledRule.br->bodyMz || disabledRule.br->urlMz)) {
+            if (!(disabledRule.br.argsMz || disabledRule.br.headersMz ||
+                  disabledRule.br.bodyMz || disabledRule.br.urlMz)) {
                 return true;
             }
 
             /* if exc is in name, but rule is not specificaly disabled for name (and targets a zone)  */
-            if (targetName != disabledRule.br->targetName)
+            if (targetName != disabledRule.br.targetName)
                 continue;
 
             switch (zone) {
                 case ARGS:
-                    if (disabledRule.br->argsMz) {
+                    if (disabledRule.br.argsMz) {
                         DEBUG_CONF_WL("rule " << rule.id << " is disabled in ARGS");
                         return true;
                     }
                     break;
                 case HEADERS:
-                    if (disabledRule.br->headersMz) {
+                    if (disabledRule.br.headersMz) {
                         DEBUG_CONF_WL("rule " << rule.id << " is disabled in HEADERS");
                         return true;
                     }
                     break;
                 case BODY:
-                    if (disabledRule.br->bodyMz) {
+                    if (disabledRule.br.bodyMz) {
                         DEBUG_CONF_WL("rule " << rule.id << " is disabled in BODY");
                         return true;
                     }
                     break;
                 case FILE_EXT:
-                    if (disabledRule.br->fileExtMz) {
+                    if (disabledRule.br.fileExtMz) {
                         DEBUG_CONF_WL("rule " << rule.id << " is disabled in FILE_EXT");
                         return true;
                     }
                     break;
                 case URL:
-                    if (disabledRule.br->urlMz) {
+                    if (disabledRule.br.urlMz) {
                         DEBUG_CONF_WL("rule " << rule.id << " is disabled in URL zone:" << zone);
                         return true;
                     }
@@ -681,9 +681,8 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
         return false;
     }
 
-
     for (const http_rule_t &rxMzRule : rxMzWlr) {
-        if (!rxMzRule.br || rxMzRule.br->customLocations.empty()) {
+        if (!rxMzRule.br.active || rxMzRule.br.customLocations.empty()) {
             DEBUG_CONF_WL("Rule pushed to RXMZ, but has no custom_location.");
             continue;
         }
@@ -693,29 +692,21 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
         ** - go through each custom location (ie. ARGS_VAR_X:foobar*)
         ** - verify that regular expressions match. If not, it means whitelist does not apply.
         */
-        if (rxMzRule.br->zone != zone) {
-            DEBUG_CONF_WL("Not targeting same zone: custom rule loc zone: " << match_zones[rxMzRule.br->zone] <<
+        if (rxMzRule.br.zone != zone) {
+            DEBUG_CONF_WL("Not targeting same zone: custom rule loc zone: " << match_zones[rxMzRule.br.zone] <<
                           " current zone: " << match_zones[zone]);
             continue;
         }
 
-        if (targetName != rxMzRule.br->targetName) {
+        if (targetName != rxMzRule.br.targetName) {
             DEBUG_CONF_WL("Only one target name");
             continue;
         }
 
         bool violation = false;
-        for (const custom_rule_location_t &loc : rxMzRule.br->customLocations) {
+        for (const custom_rule_location_t &loc : rxMzRule.br.customLocations) {
             if (loc.bodyVar) {
-                if (loc.targetRx) {
-                    if (!regex_search(name, *loc.targetRx)) {
-                        violation = true;
-                        DEBUG_CONF_WL("[BODY] RX FAIL (str:" << name << ")");
-                        break;
-                    }
-                    DEBUG_CONF_WL("[BODY] RX Match (str:" << name << ")");
-                }
-                else {
+                if (!loc.target.empty()) {
                     if (name != loc.target) {
                         violation = true;
                         DEBUG_CONF_WL("[BODY] FAIL (str:" << name << ")");
@@ -723,17 +714,17 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
                     }
                     DEBUG_CONF_WL("[BODY] Match (str:" << name << ")");
                 }
-            }
-            if (loc.argsVar) {
-                if (loc.targetRx) {
-                    if (!regex_search(name, *loc.targetRx)) {
+                else {
+                    if (!regex_search(name, loc.targetRx)) {
                         violation = true;
-                        DEBUG_CONF_WL("[ARGS] RX FAIL (str:" << name << ")");
+                        DEBUG_CONF_WL("[BODY] RX FAIL (str:" << name << ")");
                         break;
                     }
-                    DEBUG_CONF_WL("[ARGS] RX Match (str:" << name << ")");
+                    DEBUG_CONF_WL("[BODY] RX Match (str:" << name << ")");
                 }
-                else {
+            }
+            if (loc.argsVar) {
+                if (!loc.target.empty()) {
                     if (name != loc.target) {
                         violation = true;
                         DEBUG_CONF_WL("[ARGS] FAIL (str:" << name << ")");
@@ -741,23 +732,31 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
                     }
                     DEBUG_CONF_WL("[ARGS] Match (str:" << name << ")");
                 }
-            }
-            if (loc.specificUrl) {
-                if (loc.targetRx) {
-                    if (!regex_search(uri, *loc.targetRx)) {
+                else {
+                    if (!regex_search(name, loc.targetRx)) {
                         violation = true;
-                        DEBUG_CONF_WL("[URI] RX FAIL (str:" << uri << ")");
+                        DEBUG_CONF_WL("[ARGS] RX FAIL (str:" << name << ")");
                         break;
                     }
-                    DEBUG_CONF_WL("[URI] RX Match (str:" << uri << ")");
+                    DEBUG_CONF_WL("[ARGS] RX Match (str:" << name << ")");
                 }
-                else {
+            }
+            if (loc.specificUrl) {
+                if (!loc.target.empty()) {
                     if (uri != loc.target) {
                         violation = true;
                         DEBUG_CONF_WL("[URI] FAIL (str:" << uri << ")");
                         break;
                     }
                     DEBUG_CONF_WL("[URI] Match (str:" << uri << ")");
+                }
+                else {
+                    if (!regex_search(uri, loc.targetRx)) {
+                        violation = true;
+                        DEBUG_CONF_WL("[URI] RX FAIL (str:" << uri << ")");
+                        break;
+                    }
+                    DEBUG_CONF_WL("[URI] RX Match (str:" << uri << ")");
                 }
             }
         }

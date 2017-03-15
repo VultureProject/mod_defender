@@ -79,54 +79,54 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
 }
 
 bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
-    if (!rl.br || str.empty())
+    if (!rl.br.active || str.empty())
         return false;
     DEBUG_RUNTIME_PR("[" << str);
     nbMatch = 0;
-    if (rl.br->rx) {
-        DEBUG_RUNTIME_PR(" ? <regex>] ");
-        nbMatch = (unsigned long) distance(sregex_iterator(str.begin(), str.end(), *rl.br->rx), sregex_iterator());
+    if (!rl.br.str.empty()) {
+        DEBUG_RUNTIME_PR(" ? " << rl.br.str << "] ");
+//        nbMatch = countSubstring(str, rl.br.str);
+//        nbMatch = countSubstring(str.c_str(), str.size(), rl.br.str.c_str(), rl.br.str.size());
+        nbMatch = countSubstring(str.c_str(), rl.br.str.c_str(), rl.br.str.size());
+
+
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
-            return !rl.br->negative;
+            return !rl.br.negative;
         }
         else {
-            return rl.br->negative;
+            return rl.br.negative;
         }
     }
-    else if (!rl.br->str.empty()) {
-        DEBUG_RUNTIME_PR(" ? " << rl.br->str << "] ");
-//        nbMatch = countSubstring(str, rl.br->str);
-//        nbMatch = countSubstring(str.c_str(), str.size(), rl.br->str.c_str(), rl.br->str.size());
-        nbMatch = countSubstring(str.c_str(), rl.br->str.c_str(), rl.br->str.size());
-
-
+    else {
+        DEBUG_RUNTIME_PR(" ? <regex>] ");
+        nbMatch = (unsigned long) distance(sregex_iterator(str.begin(), str.end(), rl.br.rx), sregex_iterator());
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
-            return !rl.br->negative;
+            return !rl.br.negative;
         }
         else {
-            return rl.br->negative;
+            return rl.br.negative;
         }
     }
     return false;
 }
 
 void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
-                                    const vector<http_rule_t *> &rules) {
+                                    const vector<http_rule_t> &rules) {
     if (scfg->libinjection)
         checkLibInjection(zone, name, value);
 
     unsigned long nbMatch = 0;
     for (int i = 0; i < rules.size() && ((!block || scfg->learning) && !drop); i++) {
-        const http_rule_t &rule = *rules[i];
+        const http_rule_t &rule = rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 
         /* does the rule have a custom location ? custom location means checking only on a specific argument */
-        if (!name.empty() && rule.br->customLocation) {
+        if (!name.empty() && rule.br.customLocation) {
             DEBUG_RUNTIME_BRS("loc ");
             /* for each custom location */
-            for (const custom_rule_location_t &loc : rule.br->customLocations) {
+            for (const custom_rule_location_t &loc : rule.br.customLocations) {
                 /* check if the custom location zone match with the current zone (enhancement) */
                 if (!((loc.bodyVar && zone == BODY) || (loc.argsVar && zone == ARGS) ||
                       (loc.headersVar && zone == HEADERS) || (loc.specificUrl && zone == URL))) {
@@ -141,7 +141,7 @@ void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const s
                         applyCheckRule(rule, nbMatch, name, value, zone, false);
                     }
 
-                    if (!rule.br->negative) {
+                    if (!rule.br.negative) {
                         /* match rule against var name, */
                         if (processRuleBuffer(name, rule, nbMatch)) {
                             /* if our rule matched, apply effects (score etc.) */
@@ -156,9 +156,9 @@ void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const s
         ** check against the rule if the current zone is matching
         ** the zone the rule is meant to be check against
         */
-        if ((zone == HEADERS && rule.br->headersMz) || (zone == URL && rule.br->urlMz) ||
-            (zone == ARGS && rule.br->argsMz) || (zone == BODY && rule.br->bodyMz) ||
-            (zone == FILE_EXT && rule.br->fileExtMz)) {
+        if ((zone == HEADERS && rule.br.headersMz) || (zone == URL && rule.br.urlMz) ||
+            (zone == ARGS && rule.br.argsMz) || (zone == BODY && rule.br.bodyMz) ||
+            (zone == FILE_EXT && rule.br.fileExtMz)) {
             DEBUG_RUNTIME_BRS("zone ");
             /* check the rule against the value*/
             if (processRuleBuffer(value, rule, nbMatch)) {
@@ -166,7 +166,7 @@ void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const s
                 applyCheckRule(rule, nbMatch, name, value, zone, false);
             }
 
-            if (!rule.br->negative) {
+            if (!rule.br.negative) {
                 /* check the rule against the name */
                 if (processRuleBuffer(name, rule, nbMatch)) {
                     /* if our rule matched, apply effects (score etc.) */
@@ -534,7 +534,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
  * splits the string into key/val pair
  * apply rules to key/val
  */
-bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t *> &rules, MATCH_ZONE zone) {
+bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t> &rules, MATCH_ZONE zone) {
     str_t name, val;
     char *eq, *ev, *orig;
     unsigned long len, full_len;
