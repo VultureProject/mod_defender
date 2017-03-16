@@ -15,10 +15,15 @@ add_library(mod_defender SHARED ${SOURCE_FILES})
 
 set(STOP_APACHE_CMD sudo systemctl stop apache2)
 set(START_APACHE_CMD sudo systemctl start apache2)
-
 set(DEF_DIR /etc/moddefender)
 set(AP_MODS_AV /etc/apache2/mods-available)
 set(AP_MODS_DIR /usr/lib/apache2/modules)
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+    set(STOP_APACHE_CMD service apache24 restart)
+    set(START_APACHE_CMD service apache24 restart)
+    set(AP_MODS_DIR /usr/local/libexec/apache24/)
+endif()
 
 add_custom_command(
         TARGET mod_defender
