@@ -10,10 +10,7 @@ include_directories(/usr/include/apache2 /usr/include/apr-1.0 /usr/include/apr-1
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
-set(SOURCE_FILES mod_defender.cpp mod_defender.hpp RuntimeScanner.cpp RuntimeScanner.hpp libinjection/libinjection.h
-        libinjection/libinjection_html5.c libinjection/libinjection_sqli.c libinjection/libinjection_sqli.h
-        libinjection/libinjection_sqli_data.h libinjection/libinjection_xss.c libinjection/libinjection_xss.h
-        RuleParser.cpp RuleParser.h Util.cpp Util.h)
+file(GLOB SOURCE_FILES *.cpp libinjection/*.c)
 add_library(mod_defender SHARED ${SOURCE_FILES})
 
 set(STOP_APACHE_CMD sudo systemctl stop apache2)
