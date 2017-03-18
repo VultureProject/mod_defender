@@ -44,8 +44,8 @@ RuleParser::RuleParser() {
     libxssRule.scores.emplace_back("$XSS", 8);
 }
 
-void RuleParser::parseMainRules(vector<string> rulesArray) {
-    int ruleCount = 0;
+unsigned int RuleParser::parseMainRules(vector<string> rulesArray) {
+    unsigned int ruleCount = 0;
     for (int i = 0; i < rulesArray.size(); i += 5) {
         bool error = false;
         DEBUG_CONF_MR("MainRule ");
@@ -125,7 +125,7 @@ void RuleParser::parseMainRules(vector<string> rulesArray) {
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%lu skipped", rule.id);
         DEBUG_CONF_MR(endl);
     }
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d MainRules loaded", ruleCount);
+    return ruleCount;
 }
 
 const char* RuleParser::parseCheckRule(apr_pool_t* pool, string equation, string action) {
@@ -184,8 +184,8 @@ const char* RuleParser::parseCheckRule(apr_pool_t* pool, string equation, string
     return NULL;
 }
 
-void RuleParser::parseBasicRules(vector<string> rulesArray) {
-    int ruleCount = 0;
+unsigned int RuleParser::parseBasicRules(vector<string> rulesArray) {
+    unsigned int ruleCount = 0;
     for (int i = 0; i < rulesArray.size(); i += 3) {
         DEBUG_CONF_BR("BasicRule ");
         http_rule_t rule;
@@ -213,7 +213,7 @@ void RuleParser::parseBasicRules(vector<string> rulesArray) {
         ruleCount++;
         DEBUG_CONF_BR(endl);
     }
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%d BasicRules loaded", ruleCount);
+    return ruleCount;
 }
 
 void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {

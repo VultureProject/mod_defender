@@ -42,12 +42,13 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, s
         tmpMainRules.clear();
         tmpBasicRules.clear();
     } else { // second (last) load
-        parser.parseMainRules(tmpMainRules);
-        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%lu CheckRules loaded", parser.checkRules.size());
-        parser.parseBasicRules(tmpBasicRules);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "%lu CheckRules loaded", parser.checkRules.size());
+        unsigned int mainRuleCount = parser.parseMainRules(tmpMainRules);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "%d MainRules loaded", mainRuleCount);
+        unsigned int basicRuleCount = parser.parseBasicRules(tmpBasicRules);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "%d BasicRules loaded", basicRuleCount);
         parser.generateHashTables();
-
-        ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, plog, "RuleParser initialized successfully");
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "RuleParser initialized successfully");
     }
     return OK;
 }
@@ -233,8 +234,7 @@ static const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *ar
 
 static const char *set_request_body_limit(cmd_parms *cmd, void *_dcfg, const char *arg) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    unsigned long limit;
-    limit = strtoul(arg, NULL, 10);
+    unsigned long limit = strtoul(arg, NULL, 10);
     if ((limit == LONG_MAX) || (limit == LONG_MIN) || (limit <= 0)) {
         return apr_psprintf(cmd->pool, "mod_defender: Invalid value for SecRequestBodyLimit: %s", arg);
     }

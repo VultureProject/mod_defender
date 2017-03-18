@@ -260,9 +260,9 @@ public:
     http_rule_t libxssRule;
 
     RuleParser();
-    void parseMainRules(vector<string> rulesArray);
+    unsigned int parseMainRules(vector<string> rulesArray);
     const char* parseCheckRule(apr_pool_t* pool, string equation, string actionArg);
-    void parseBasicRules(vector<string> rulesArray);
+    unsigned int parseBasicRules(vector<string> rulesArray);
     void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     void generateHashTables();
     void wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
