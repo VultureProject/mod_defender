@@ -632,6 +632,10 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
 int RuntimeScanner::postReadRequest(request_rec *rec) {
     r = rec;
 
+    /* Store the uri path */
+    uri = string(r->parsed_uri.path);
+    transform(uri.begin(), uri.end(), uri.begin(), tolower);
+
     /* Store every HTTP header received */
     const apr_array_header_t *headerFields = apr_table_elts(r->headers_in);
     apr_table_entry_t *headerEntry = (apr_table_entry_t *) headerFields->elts;
@@ -682,8 +686,6 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         basestrRuleset(ARGS, key, val, parser.getRules);
     }
 
-    uri = string(r->parsed_uri.path);
-    transform(uri.begin(), uri.end(), uri.begin(), tolower);
     basestrRuleset(URL, empty, uri, parser.genericRules);
 
     if (r->method_number == M_POST || r->method_number == M_PUT)
