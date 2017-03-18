@@ -191,24 +191,12 @@ void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const s
 void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, const string &value) {
     if (value.empty() && name.empty())
         return;
-    char *szValue = NULL;
-    size_t valueLen = 0;
-    char *szName = NULL;
-    size_t nameLen = 0;
-    if (!value.empty()) {
-        szValue = strdup(value.c_str());
-        valueLen = strlen(value.c_str());
-    }
-    if (!name.empty()) {
-        szName = strdup(value.c_str());
-        nameLen = strlen(value.c_str());
-    }
 
     if (scfg->libinjection_sql) {
         struct libinjection_sqli_state state;
 
-        if (szValue) {
-            libinjection_sqli_init(&state, szValue, valueLen, FLAG_NONE);
+        if (!value.empty()) {
+            libinjection_sqli_init(&state, value.c_str(), value.size(), FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
                 http_rule_t &sqliRule = parser.libsqliRule;
@@ -217,8 +205,8 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
             }
         }
 
-        if (szName) {
-            libinjection_sqli_init(&state, szName, nameLen, FLAG_NONE);
+        if (!name.empty()) {
+            libinjection_sqli_init(&state, name.c_str(), name.size(), FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
                 http_rule_t &sqliRule = parser.libsqliRule;
@@ -229,11 +217,11 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
     }
 
     if (scfg->libinjection_xss) {
-        if (szValue && libinjection_xss(szValue, valueLen)) {
+        if (!value.empty() && libinjection_xss(value.c_str(), value.size())) {
             applyRuleMatch(parser.libxssRule, 1, zone, name, value, false);
         }
 
-        if (szName && libinjection_xss(szName, nameLen)) {
+        if (!name.empty() && libinjection_xss(name.c_str(), name.size())) {
             applyRuleMatch(parser.libxssRule, 1, zone, name, value, true);
         }
     }
