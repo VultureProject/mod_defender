@@ -133,7 +133,7 @@ const char* RuleParser::parseCheckRule(apr_pool_t* pool, string equation, string
     check_rule_t chkrule;
     vector<string> eqParts = split(equation, ' ');
 
-    string tag = rtrim(eqParts[0]);
+    string tag = (std::basic_string<char, std::char_traits<char>, std::allocator<char>> &&) rtrim(eqParts[0]);
     DEBUG_CONF_CR(tag << " ");
 
     if (eqParts[1] == ">=") {

@@ -266,7 +266,7 @@ static const char *set_mainrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
     if (!strcmp(arg, ";")) {
         return NULL;
     }
-    tmpMainRules.push_back(arg);
+    tmpMainRules.push_back(apr_pstrdup(cmd->pool, arg));
     return NULL;
 }
 
@@ -275,7 +275,7 @@ static const char *set_checkrules(cmd_parms *cmd, void *_dcfg, const char *arg1,
 }
 
 static const char *set_basicrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
-    tmpBasicRules.push_back(arg);
+    tmpBasicRules.push_back(apr_pstrdup(cmd->pool, arg));
     return NULL;
 }
 
