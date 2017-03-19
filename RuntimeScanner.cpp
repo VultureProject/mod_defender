@@ -16,15 +16,6 @@
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
-    if (!scfg->learning)
-        return;
-
-    if (rulesMatchedCount > 0)
-        matchVars << "&";
-    matchVars << "zone" << rulesMatchedCount << "=" << match_zones[zone] << "&";
-    matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
-    matchVars << "var_name" << rulesMatchedCount << "=" << name;
-
     cerr << formatLog(DEFLOG_ERROR, r->useragent_ip);
     cerr << KRED "⚠ Rule #" << rule.id << " ";
     cerr << "(" << rule.logMsg << ") ";
@@ -37,18 +28,35 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
         cerr << ":" << value;
     cerr << KNRM << endl;
 
+    if (!scfg->learning)
+        return;
+
+    if (rulesMatchedCount > 0)
+        matchVars << "&";
+    matchVars << "zone" << rulesMatchedCount << "=" << match_zones[zone] << "&";
+    matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
+    matchVars << "var_name" << rulesMatchedCount << "=" << name;
+
     rulesMatchedCount++;
 }
 
 void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
-    if (action == BLOCK)
+    if (action == BLOCK) {
+        cerr << "BLOCK" << KNRM << endl;
         block = true;
-    else if (action == DROP)
+    }
+    else if (action == DROP) {
+        cerr << "DROP" << KNRM << endl;
         drop = true;
-    else if (action == ALLOW)
+    }
+    else if (action == ALLOW) {
+        cerr << "ALLOW" << KNRM << endl;
         allow = true;
-    else if (action == LOG)
+    }
+    else if (action == LOG) {
+        cerr << "LOG" << KNRM << endl;
         log = true;
+    }
 }
 
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
@@ -68,10 +76,15 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
     // negative rule case
     if (nbMatch == 0)
         nbMatch = 1;
+
+    applyRuleMatch(rule, nbMatch, zone, name, value, targetName);
+
     for (const pair<string, unsigned long> &tagScore : rule.scores) {
         bool matched = false;
         int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
+        cerr << formatLog(DEFLOG_WARN, r->useragent_ip);
+        cerr << KYEL "→ Score " << tagScore.first << " = " << score << " ";
         check_rule_t &checkRule = parser.checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL)
             matched = (score >= checkRule.limit);
@@ -83,9 +96,11 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
             matched = (score < checkRule.limit);
         if (matched)
             applyCheckRuleAction(checkRule.action);
+        else
+            cerr << KNRM << endl;
     }
 
-    applyRuleMatch(rule, nbMatch, zone, name, value, targetName);
+
 }
 
 bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
