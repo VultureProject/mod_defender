@@ -48,13 +48,15 @@ APLOG_USE_MODULE(defender);
  * Per-server configuration structure.
  */
 typedef struct {
-    char *errorlog_path;
-    apr_file_t *errorlog_fd;
-    unsigned long requestBodyLimit = 0;
-    bool libinjection_sql = false;
-    bool libinjection_xss = false;
-    bool libinjection = false;
-    bool learning = true;
+    char *matchlog_path;
+    char *jsonmatchlog_path;
+    apr_file_t *matchlog_fd;
+    apr_file_t *jsonmatchlog_fd;
+    unsigned long requestBodyLimit;
+    bool libinjection_sql;
+    bool libinjection_xss;
+    bool libinjection;
+    bool learning;
 } server_config_t;
 
 #endif /* MOD_DEFENDER_HPP */

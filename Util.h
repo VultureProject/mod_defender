@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/time.h>
+
 
 using std::chrono::system_clock;
 using namespace std::chrono;
@@ -156,7 +158,9 @@ namespace Util {
     pair<string, string> splitAtFirst(const string &s, string delim);
     vector<int> splitToInt(string &s, char delimiter);
     string apacheTimeFmt();
+    string naxsiTimeFmt();
     string formatLog(enum DEF_LOGLEVEL loglevel, char *client);
+    string escapeQuotes(const string &before);
 }
 
 

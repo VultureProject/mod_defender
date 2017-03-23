@@ -53,32 +53,41 @@ namespace Util {
     }
 
     string apacheTimeFmt() {
-        stringstream ss;
-        high_resolution_clock::time_point p = high_resolution_clock::now();
+        time_t timer;
+        char date[20];
+        struct tm* tm_info;
+        time(&timer);
+        tm_info = localtime(&timer);
+        strftime(date, 20, "%a %b %d %T", tm_info);
 
-        milliseconds millis = duration_cast<milliseconds>(p.time_since_epoch());
-        microseconds micros = std::chrono::duration_cast<std::chrono::microseconds>(p.time_since_epoch());
+        struct timespec tp;
+        clock_gettime(CLOCK_REALTIME, &tp);
+        long mic = tp.tv_nsec / 1000;
 
-        seconds s = duration_cast<seconds>(millis);
-        std::time_t t = s.count();
-        int fractional_seconds = millis.count() % 1000;
-        int fractional_millis = micros.count() % 1000;
+        std::ostringstream oss;
+        oss << date << "." << mic << " ";
 
-        std::tm *ptm = std::localtime(&t);
-        ss << std::put_time(ptm, "%a %b %d %T");
-        ss << ".";
-        ss << std::setfill('0') << std::setw(3) << fractional_seconds;
-        ss << std::setfill('0') << std::setw(3) << fractional_millis;
-        ss << " ";
-        ss << std::put_time(ptm, "%Y");
-        return ss.str();
+        char year[5];
+        strftime(year, 5, "%Y", tm_info);
+        oss << year;
+        return oss.str();
+    }
+
+    string naxsiTimeFmt() {
+        time_t timer;
+        char buffer[26];
+        struct tm* tm_info;
+        time(&timer);
+        tm_info = localtime(&timer);
+        strftime(buffer, 26, "%Y/%m/%d %T", tm_info);
+        return string(buffer);
     }
 
     string formatLog(enum DEF_LOGLEVEL loglevel, char *client) {
         stringstream ss;
         ss << "[" << apacheTimeFmt() << "] ";
         ss << "[defender:" << logLevels[loglevel] << "] ";
-        ss << "[pid " << getpid() << "] ";
+//        ss << "[pid " << getpid() << "] ";
         if (client != NULL)
             ss << "[client " << client << "] ";
         return ss.str();
@@ -213,5 +222,20 @@ namespace Util {
         *src = s;
 
         return bad;
+    }
+
+    string escapeQuotes(const string &before) {
+        string after;
+        after.reserve(before.length() + 4);
+        for (string::size_type i = 0; i < before.length(); ++i) {
+            switch (before[i]) {
+                case '"':
+                case '\\':
+                    after += '\\';
+                default:
+                    after += before[i];
+            }
+        }
+        return after;
     }
 }

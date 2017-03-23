@@ -77,7 +77,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 ### FreeBSD
 1. Install dependencies
 	```sh
-	pkg install apache24 gcc cmake
+	pkg install apr gcc cmake
 	```
 
 1. Compile the source

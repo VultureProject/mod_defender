@@ -201,31 +201,65 @@ static void defender_register_hooks(apr_pool_t *p) {
 /**
  * This function is called when the "MatchLog" configuration directive is parsed.
  */
-static const char *set_errorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
+static const char *set_matchlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
     // get the module configuration (this is the structure created by create_server_config())
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
 
-    scfg->errorlog_path = apr_pstrdup(cmd->pool, arg);
+    scfg->matchlog_path = apr_pstrdup(cmd->pool, arg);
 
-    if (scfg->errorlog_path[0] == '|') {
-        const char *pipe_name = scfg->errorlog_path + 1;
+    if (scfg->matchlog_path[0] == '|') {
+        const char *pipe_name = scfg->matchlog_path + 1;
         piped_log *pipe_log;
 
         pipe_log = ap_open_piped_log(cmd->pool, pipe_name);
         if (pipe_log == NULL) {
             return apr_psprintf(cmd->pool, "mod_defender: Failed to open the errorlog pipe: %s", pipe_name);
         }
-        scfg->errorlog_fd = ap_piped_log_write_fd(pipe_log);
+        scfg->matchlog_fd = ap_piped_log_write_fd(pipe_log);
     } else {
-        const char *file_name = ap_server_root_relative(cmd->pool, scfg->errorlog_path);
+        const char *file_name = ap_server_root_relative(cmd->pool, scfg->matchlog_path);
         apr_status_t rc;
 
-        rc = apr_file_open(&scfg->errorlog_fd, file_name,
+        rc = apr_file_open(&scfg->matchlog_fd, file_name,
                            APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
                            APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
 
         if (rc != APR_SUCCESS) {
             return apr_psprintf(cmd->pool, "mod_defender: Failed to open the errorlog file: %s", file_name);
+        }
+    }
+
+    return NULL; // success
+}
+
+/**
+ * This function is called when the "JSONMatchLog" configuration directive is parsed.
+ */
+static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
+    // get the module configuration (this is the structure created by create_server_config())
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+
+    scfg->jsonmatchlog_path = apr_pstrdup(cmd->pool, arg);
+
+    if (scfg->jsonmatchlog_path[0] == '|') {
+        const char *pipe_name = scfg->jsonmatchlog_path + 1;
+        piped_log *pipe_log;
+
+        pipe_log = ap_open_piped_log(cmd->pool, pipe_name);
+        if (pipe_log == NULL) {
+            return apr_psprintf(cmd->pool, "mod_defender: Failed to open the jsonerrorlog pipe: %s", pipe_name);
+        }
+        scfg->jsonmatchlog_fd = ap_piped_log_write_fd(pipe_log);
+    } else {
+        const char *file_name = ap_server_root_relative(cmd->pool, scfg->jsonmatchlog_path);
+        apr_status_t rc;
+
+        rc = apr_file_open(&scfg->jsonmatchlog_fd, file_name,
+                           APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
+                           APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
+
+        if (rc != APR_SUCCESS) {
+            return apr_psprintf(cmd->pool, "mod_defender: Failed to open the jsonerrorlog file: %s", file_name);
         }
     }
 
@@ -262,6 +296,12 @@ static const char *set_learning_flag(cmd_parms *cmd, void *_dcfg, int flag) {
     return NULL;
 }
 
+static const char *set_extensive_flag(cmd_parms *cmd, void *_dcfg, int flag) {
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+    scfg->learning = (bool) flag;
+    return NULL;
+}
+
 static const char *set_mainrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
     if (!strcmp(arg, ";")) {
         return NULL;
@@ -286,9 +326,11 @@ static const command_rec directives[] = {
         {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF, ITERATE, "Match directive"},
         {"CheckRule",        (cmd_func) set_checkrules,            NULL, RSRC_CONF, TAKE2,   "Score directive"},
         {"BasicRule",        (cmd_func) set_basicrules,            NULL, RSRC_CONF, ITERATE, "Whitelist directive"},
-        {"MatchLog",         (cmd_func) set_errorlog_path,         NULL, RSRC_CONF, TAKE1,   "Path to the match log"},
+        {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, RSRC_CONF, TAKE1,   "Path to the match log"},
+        {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, RSRC_CONF, TAKE1,   "Path to the JSON match log"},
         {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, RSRC_CONF, TAKE1,   "Set Request Body Limit"},
         {"LearningMode",     (cmd_func) set_learning_flag,         NULL, RSRC_CONF, FLAG,    "Learning mode toggle"},
+        {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, RSRC_CONF, FLAG,    "Extensive log toggle"},
         {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, RSRC_CONF, FLAG,    "Libinjection SQL toggle"},
         {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, RSRC_CONF, FLAG,    "Libinjection XSS toggle"},
         {NULL}
@@ -300,6 +342,17 @@ static const command_rec directives[] = {
 static void *create_server_config(apr_pool_t *p, server_rec *s) {
     // allocate space for the configuration structure from the provided pool p.
     server_config_t *scfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
+
+    char* error_log_abs = ap_server_root_relative(p, s->error_fname);
+    char* parent_log_dir = ap_make_dirstr_parent(p, error_log_abs);
+    char* matchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_match.log", NULL);
+    apr_file_open(&scfg->matchlog_fd, matchlog_path, APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
+                  APR_UREAD | APR_UWRITE | APR_GREAD, p);
+    char* jsonmatchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_json_match.log", NULL);
+    apr_file_open(&scfg->jsonmatchlog_fd, jsonmatchlog_path, APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
+                  APR_UREAD | APR_UWRITE | APR_GREAD, p);
+    scfg->requestBodyLimit = 131072;
+    scfg->learning = 1;
 
     // return the new server configuration structure.
     return scfg;

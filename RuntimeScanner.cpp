@@ -13,20 +13,30 @@
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
 #include "Util.h"
+#include "mod_defender.hpp"
+
+void RuntimeScanner::streamToFile(const stringstream &ss, apr_file_t* fd) {
+    if (!fd) return;
+    const string tmp = ss.str();
+    apr_size_t loglen = tmp.size();
+    apr_file_write(fd, tmp.c_str(), &loglen);
+}
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
-    cerr << formatLog(DEFLOG_ERROR, r->useragent_ip);
-    cerr << KRED "⚠ Rule #" << rule.id << " ";
-    cerr << "(" << rule.logMsg << ") ";
-    cerr << "matched " << nbMatch << " times ";
+    stringstream errlog;
+    errlog << formatLog(DEFLOG_ERROR, r->useragent_ip);
+    errlog << KRED "⚠ Rule #" << rule.id << " ";
+    errlog << "(" << rule.logMsg << ") ";
+    errlog << "matched " << nbMatch << " times ";
     if (targetName)
-        cerr << "in name ";
-    cerr << "at " << match_zones[zone] << " ";
-    cerr << name;
+        errlog << "in name ";
+    errlog << "at " << match_zones[zone] << " ";
+    errlog << name;
     if (!value.empty())
-        cerr << ":" << value;
-    cerr << KNRM << endl;
+        errlog << ":" << value;
+    errlog << KNRM << endl;
+    streamToFile(errlog, r->server->error_log);
 
     if (!scfg->learning)
         return;
@@ -37,24 +47,32 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
     matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
     matchVars << "var_name" << rulesMatchedCount << "=" << name;
 
+    if (rulesMatchedCount > 0)
+        jsonMatchVars << ",";
+    jsonMatchVars << "{\"zone\":\"" << match_zones[zone] << "\",";
+    jsonMatchVars << "\"id\":" << rule.id << ",";
+    jsonMatchVars << "\"var_name\":\"" << escapeQuotes(name) << "\"}";
+
+    writeExtensiveLog(rule, zone, name, value, targetName);
+
     rulesMatchedCount++;
 }
 
-void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action) {
+void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action, stringstream &errlog) {
     if (action == BLOCK) {
-        cerr << "BLOCK" << KNRM << endl;
+        errlog << "BLOCK" << KNRM << endl;
         block = true;
     }
     else if (action == DROP) {
-        cerr << "DROP" << KNRM << endl;
+        errlog << "DROP" << KNRM << endl;
         drop = true;
     }
     else if (action == ALLOW) {
-        cerr << "ALLOW" << KNRM << endl;
+        errlog << "ALLOW" << KNRM << endl;
         allow = true;
     }
     else if (action == LOG) {
-        cerr << "LOG" << KNRM << endl;
+        errlog << "LOG" << KNRM << endl;
         log = true;
     }
 }
@@ -64,13 +82,15 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
         if (!scfg->learning)
             return;
-        cerr << formatLog(DEFLOG_WARN, r->useragent_ip);
-        cerr << KGRN "✓ Rule #" << rule.id << " ";
-        cerr << "(" << rule.logMsg << ") ";
-        cerr << "whitelisted ";
+        stringstream errlog;
+        errlog << formatLog(DEFLOG_WARN, r->useragent_ip);
+        errlog << KGRN "✓ Rule #" << rule.id << " ";
+        errlog << "(" << rule.logMsg << ") ";
+        errlog << "whitelisted ";
         if (targetName)
-            cerr << "in name ";
-        cerr << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
+            errlog << "in name ";
+        errlog << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
+        streamToFile(errlog, r->server->error_log);
         return;
     }
     // negative rule case
@@ -79,12 +99,14 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
 
     applyRuleMatch(rule, nbMatch, zone, name, value, targetName);
 
+    stringstream errlog;
     for (const pair<string, unsigned long> &tagScore : rule.scores) {
         bool matched = false;
         int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
-        cerr << formatLog(DEFLOG_WARN, r->useragent_ip);
-        cerr << KYEL "→ Score " << tagScore.first << " = " << score << " ";
+
+        errlog << formatLog(DEFLOG_WARN, r->useragent_ip);
+        errlog << KYEL "→ Score " << tagScore.first << " = " << score << " ";
         check_rule_t &checkRule = parser.checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL)
             matched = (score >= checkRule.limit);
@@ -95,12 +117,11 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
         else if (checkRule.comparator < INF)
             matched = (score < checkRule.limit);
         if (matched)
-            applyCheckRuleAction(checkRule.action);
+            applyCheckRuleAction(checkRule.action, errlog);
         else
-            cerr << KNRM << endl;
+            errlog << KNRM << endl;
     }
-
-
+    streamToFile(errlog, r->server->error_log);
 }
 
 bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
@@ -113,7 +134,6 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
 //        nbMatch = countSubstring(str, rl.br.str);
 //        nbMatch = countSubstring(str.c_str(), str.size(), rl.br.str.c_str(), rl.br.str.size());
         nbMatch = countSubstring(str.c_str(), rl.br.str.c_str(), rl.br.str.size());
-
 
         if (nbMatch > 0) {
             DEBUG_RUNTIME_PR("matched " << endl);
@@ -315,7 +335,7 @@ bool RuntimeScanner::contentDispositionParser(unsigned char *str, unsigned char 
             break;
         else {
             /* gargabe is present ?*/
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL,
+            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r,
                          "extra data in content-disposition ? end:%s, str:%s, diff=%ld", line_end, str, line_end - str);
             return false;
         }
@@ -351,7 +371,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
     /*extract boundary*/
     if (!parseFormDataBoundary(&boundary, &boundary_len)) {
         if (boundary && boundary_len > 1)
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
+            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
                          boundary_len);
         applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", empty, false);
         block = true;
@@ -478,7 +498,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             }
         }
         if (!end) {
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "POST data : malformed line");
+            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "POST data : malformed line");
             return;
         }
         if (filen_start) {
@@ -535,7 +555,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             idx += end - (src + idx);
         }
         else {
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "(multipart) : ");
+            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "(multipart) : ");
         }
         if (!strncmp((const char *) end, "\r\n", 2))
             idx += 2;
@@ -567,7 +587,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
         ev = strchr(str, '&');
 
         if ((!eq && !ev) /*?foobar */ || (eq && ev && eq > ev)) /*?foobar&bla=test*/ {
-            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "XX-url has no '&' and '=' or has both [%s]", str);
+            ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '&' and '=' or has both [%s]", str);
 
             if (!ev)
                 ev = str + strlen(str);
@@ -582,7 +602,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
         }
             /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
         else if (!eq) {
-            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "XX-url has no '=' but has '&' [%s]", str);
+            ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '=' but has '&' [%s]", str);
 
             applyRuleMatch(parser.uncommonUrl, 1, zone, empty, empty, false);
             if (ev > str) /* ?var& | ?var&val */ {
@@ -665,7 +685,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
                 contentLength = std::stoul(val);
             }
             catch (std::exception const &e) {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert content-type: \"%s\" to interger",
+                ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "%s cannot convert content-type: \"%s\" to interger",
                              e.what(), val.c_str());
             }
         }
@@ -707,6 +727,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         return DECLINED;
 
     writeLearningLog();
+    writeJSONLearningLog();
 
     if (block)
         return HTTP_FORBIDDEN;
@@ -756,6 +777,7 @@ int RuntimeScanner::processBody() {
     }
 
     writeLearningLog();
+    writeJSONLearningLog();
 
     if (block) {
         return HTTP_FORBIDDEN;
@@ -767,40 +789,99 @@ void RuntimeScanner::writeLearningLog() {
     if (!scfg->learning || rulesMatchedCount == 0)
         return;
 
-    std::time_t tt = system_clock::to_time_t(system_clock::now());
-    std::tm *ptm = std::localtime(&tt);
-    stringstream errlog;
-    errlog << std::put_time(ptm, "%Y/%m/%d %T") << " ";
-    errlog << "[error] ";
-    errlog << "NAXSI_FMT: ";
+    stringstream learninglog;
+    learninglog << naxsiTimeFmt() << " ";
+    learninglog << "[error] ";
+    learninglog << "NAXSI_FMT: ";
 
-    errlog << "ip=" << r->useragent_ip << "&";
-    errlog << "server=" << r->hostname << "&";
-    errlog << "uri=" << r->parsed_uri.path << "&";
+    learninglog << "ip=" << r->useragent_ip << "&";
+    learninglog << "server=" << r->hostname << "&";
+    learninglog << "uri=" << r->parsed_uri.path << "&";
 
-    errlog << "block=" << block << "&";
+    learninglog << "block=" << block << "&";
     int i = 0;
     for (const auto &match : matchScores) {
-        errlog << "cscore" << i << "=" << match.first << "&";
-        errlog << "score" << i << "=" << match.second << "&";
+        learninglog << "cscore" << i << "=" << match.first << "&";
+        learninglog << "score" << i << "=" << match.second << "&";
         i++;
     }
 
-    errlog << matchVars.str();
+    learninglog << matchVars.str();
 
-    errlog << ", ";
+    learninglog << ", ";
 
-    errlog << "client: " << r->useragent_ip << ", ";
-    errlog << "server: " << r->server->server_hostname << ", ";
-    errlog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
-    errlog << "host: \"" << r->hostname << "\"";
+    learninglog << "client: " << r->useragent_ip << ", ";
+    learninglog << "server: " << r->server->server_hostname << ", ";
+    learninglog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
+    learninglog << "host: \"" << r->hostname << "\"";
 
-    errlog << endl;
+    learninglog << endl;
+    streamToFile(learninglog, scfg->matchlog_fd);
+}
 
-    const string tmp = errlog.str();
-    const char *szStr = tmp.c_str();
-    apr_size_t szStrlen = strlen(szStr);
-    apr_file_write(scfg->errorlog_fd, szStr, &szStrlen);
+void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone, const string &name,
+                                       const string &value, bool targetName) {
+    stringstream extensivelog;
+    extensivelog << naxsiTimeFmt() << " ";
+    extensivelog << "[error] ";
+    extensivelog << "NAXSI_EXLOG: ";
+
+    extensivelog << "ip=" << r->useragent_ip << "&";
+    extensivelog << "server=" << r->hostname << "&";
+    extensivelog << "uri=" << r->parsed_uri.path << "&";
+
+    extensivelog << "id=" << rule.id << "&";
+    extensivelog << "zone=" << match_zones[zone];
+    if (targetName)
+        extensivelog << "|NAME";
+    extensivelog << "&";
+    extensivelog << "var_name=" << name << "&";
+    extensivelog << "content=" << value << ",";
+
+    extensivelog << "client: " << r->useragent_ip << ", ";
+    extensivelog << "server: " << r->server->server_hostname << ", ";
+    extensivelog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
+    extensivelog << "host: \"" << r->hostname << "\"";
+
+    extensivelog << endl;
+    streamToFile(extensivelog, scfg->matchlog_fd);
+}
+
+void RuntimeScanner::writeJSONLearningLog() {
+    if (!scfg->learning || rulesMatchedCount == 0)
+        return;
+
+    stringstream jsonlog;
+    std::time_t result = std::time(nullptr);
+    std::asctime(std::localtime(&result));
+    jsonlog << "{\"timestamp\":";
+    jsonlog << result << ",";
+
+    jsonlog << "\"ip\":\"" << r->useragent_ip << "\",";
+    jsonlog << "\"hostname\":\"" << r->hostname << "\",";
+    jsonlog << "\"uri\":\"" << r->parsed_uri.path << "\",";
+
+    jsonlog << "\"block\":" << block << ",";
+    jsonlog << "\"scores\":{";
+    int i = 0;
+    for (const auto &match : matchScores) {
+        jsonlog << "\"" << match.first << "\":" << match.second << ",";
+        i++;
+    }
+    jsonlog.seekp(-1, std::ios_base::end);
+    jsonlog << "},";
+
+    jsonlog << "\"vars\":[" << jsonMatchVars.str() << "],";
+
+    jsonlog << "\"client\":\"" << r->useragent_ip << "\",";
+    jsonlog << "\"server\":\"" << r->server->server_hostname << "\",";
+    jsonlog << "\"method\":\"" << r->method << "\",";
+    jsonlog << "\"protocol\":\"" << r->protocol << "\",";
+    jsonlog << "\"unparsed_uri\":\"" << r->unparsed_uri << "\",";
+    jsonlog << "\"host\":\"" << r->hostname << "\"";
+
+    jsonlog << "}" << endl;
+    streamToFile(jsonlog, scfg->jsonmatchlog_fd);
 }
 
 bool RuntimeScanner::jsonForward(json_t &js) {
@@ -902,7 +983,7 @@ bool RuntimeScanner::jsonVal(json_t &js) {
             transform(value.begin(), value.end(), value.begin(), tolower);
             basestrRuleset(BODY, jsckey, value, parser.bodyRules);
 
-            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) js.ckey.data, (char*) val.data);
+            ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "JSON '%s' : '%s'", (char*) js.ckey.data, (char*) val.data);
         }
         return ret;
     }
@@ -919,7 +1000,7 @@ bool RuntimeScanner::jsonVal(json_t &js) {
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
         basestrRuleset(BODY, jsckey, value, parser.bodyRules);
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) js.ckey.data, (char*) val.data);
+        ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "JSON '%s' : '%s'", (char*) js.ckey.data, (char*) val.data);
         return true;
     }
     if (!strncasecmp((const char *) (js.src + js.off), (const char *) "true", 4) ||
@@ -943,7 +1024,7 @@ bool RuntimeScanner::jsonVal(json_t &js) {
         transform(value.begin(), value.end(), value.begin(), tolower);
         basestrRuleset(BODY, jsckey, value, parser.bodyRules);
 
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "JSON '%s' : '%s'", (char*) js.ckey.data, (char*) val.data);
+        ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "JSON '%s' : '%s'", (char*) js.ckey.data, (char*) val.data);
         return true;
     }
 
@@ -1050,7 +1131,7 @@ void RuntimeScanner::jsonParse(u_char *src, unsigned long len) {
     if (!jsonObj(js)) {
         applyRuleMatch(parser.invalidJson, 1, BODY, "malformed json object", empty, false);
         block = true;
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, NULL, "jsonObj returned error, apply invalid json.");
+        ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "jsonObj returned error, apply invalid json.");
         return;
     }
     /* we are now on closing bracket, check for garbage. */

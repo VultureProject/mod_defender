@@ -6,7 +6,7 @@ set(CMAKE_SHARED_LIBRARY_PREFIX "")
 set(CMAKE_SHARED_LIBRARY_OUTPUT_NAME "")
 
 include_directories(/usr/include/apache2 /usr/include/apr-1.0 /usr/include/apr-1 /usr/include /usr/local/include/apr-1/
-        /usr/local/include/ /usr/local/include/apache24)
+        /usr/local/include/ /usr/local/include/apache24 /usr/home/vlt-sys/Engine/include/)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 
@@ -23,6 +23,12 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
     set(STOP_APACHE_CMD service apache24 restart)
     set(START_APACHE_CMD service apache24 restart)
     set(AP_MODS_DIR /usr/local/libexec/apache24/)
+
+    if(EXISTS "/usr/local/etc/rc.d/vulture")
+        set(STOP_APACHE_CMD "")
+        set(START_APACHE_CMD "")
+        set(AP_MODS_DIR /usr/home/vlt-sys/Engine/modules/)
+    endif()
 endif()
 
 add_custom_command(
@@ -39,7 +45,7 @@ install(FILES ${CMAKE_BINARY_DIR}/defender.load DESTINATION ${AP_MODS_AV})
 install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${DEF_DIR})")
 install(FILES ${CMAKE_BINARY_DIR}/core_rules.conf DESTINATION ${DEF_DIR})
 install(FILES ${CMAKE_SOURCE_DIR}/conf/moddefender.conf DESTINATION ${DEF_DIR})
-#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so DESTINATION ${AP_MODS_DIR})s
+#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so DESTINATION ${AP_MODS_DIR})
 install(CODE "execute_process(COMMAND apxs -n defender -i ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so)")
 install(CODE "execute_process(COMMAND a2enmod defender)")
 install(CODE "execute_process(COMMAND ${RELOAD_APACHE_CMD})")
