@@ -22,6 +22,7 @@
 #include <fstream>
 #include "RuleParser.h"
 #include "mod_defender.hpp"
+#include "JsonValidator.hpp"
 
 //#define DEBUG_RUNTIME_PROCESSRULE
 #ifdef DEBUG_RUNTIME_PROCESSRULE
@@ -54,24 +55,6 @@ using std::transform;
 
 const std::string empty = string();
 
-/*
-** To avoid getting DoS'ed, define max depth
-** for JSON parser, as it is recursive
-*/
-#define JSON_MAX_DEPTH 10
-
-/*
-** this structure is used only for json parsing.
-*/
-typedef struct {
-    str_t json;
-    u_char *src;
-    unsigned long off, len;
-    u_char c;
-    int depth;
-    str_t ckey;
-} json_t;
-
 enum CONTENT_TYPE {
     URL_ENC = 0, // application/x-www-form-urlencoded
     MULTIPART, // multipart/form-data
@@ -80,10 +63,12 @@ enum CONTENT_TYPE {
 };
 
 class RuntimeScanner {
+    friend class JsonValidator;
 private:
     request_rec* r;
     server_config_t* scfg;
     RuleParser& parser;
+    JsonValidator jsonValidator;
     stringstream matchVars;
     stringstream jsonMatchVars;
     unsigned int rulesMatchedCount = 0;
@@ -102,7 +87,7 @@ public:
     unsigned long contentLength = 0;
     string rawBody;
 
-    RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser) {}
+    RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser), jsonValidator(*this) {}
     void streamToFile(const stringstream &ss, apr_file_t* fd);
     int postReadRequest(request_rec *rec);
     void applyCheckRuleAction(const rule_action_t &action, stringstream &errlog);
@@ -124,14 +109,8 @@ public:
     bool contentDispositionParser(unsigned char *str, unsigned char *line_end,
                                   unsigned char **fvarn_start, unsigned char **fvarn_end,
                                   unsigned char **ffilen_start, unsigned char **ffilen_end);
+    int processAction();
     bool splitUrlEncodedRuleset(char *str, const vector<http_rule_t> &rules, MATCH_ZONE zone);
-    bool jsonObj(json_t &js);
-    bool jsonVal(json_t &js);
-    bool jsonArray(json_t &js);
-    bool jsonQuoted(json_t &js, str_t *ve);
-    void jsonParse(u_char *src, unsigned long len);
-    bool jsonForward(json_t &js);
-    bool jsonSeek(json_t &js, unsigned char seek);
 };
 
 #endif /* RUNTIMESCANNER_HPP */

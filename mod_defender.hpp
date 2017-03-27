@@ -11,22 +11,13 @@
 #ifndef MOD_DEFENDER_HPP
 #define MOD_DEFENDER_HPP
 
-#ifdef __cplusplus
-#define EXTERN_C_BLOCK_BEGIN    extern "C" {
-#define EXTERN_C_BLOCK_END      }
-#define EXTERN_C_FUNC           extern "C"
-#else
-#define EXTERN_C_BLOCK_BEGIN
-#define EXTERN_C_BLOCK_END
-#define EXTERN_C_FUNC
-#endif
-
 #include <httpd.h>
 #include <http_protocol.h>
 #include <http_config.h>
 #include <http_connection.h>
 #include <http_core.h>
 #include <http_log.h>
+#include <apr_strings.h>
 #include "RuleParser.h"
 
 // Shell colors
@@ -57,6 +48,7 @@ typedef struct {
     bool libinjection_xss;
     bool libinjection;
     bool learning;
+    bool useenv;
 } server_config_t;
 
 #endif /* MOD_DEFENDER_HPP */

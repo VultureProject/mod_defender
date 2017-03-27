@@ -8,7 +8,6 @@
  *  Released under the GPLv3
  */
 
-#include <apr_strings.h>
 #include <http_request.h>
 #include "mod_defender.hpp"
 #include "RuntimeScanner.hpp"
@@ -33,7 +32,7 @@ static apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     return OK;
 }
 
-static int post_config(apr_pool_t *pconf, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s) {
+static int post_config(apr_pool_t *, apr_pool_t *, apr_pool_t *, server_rec *s) {
     /* Figure out if we are here for the first time */
     void *init_flag = NULL;
     apr_pool_userdata_get(&init_flag, "moddefender-init-flag", s->process->pool);
@@ -112,7 +111,8 @@ static int fixer_upper(request_rec *r) {
     apr_bucket_brigade *bb_in = apr_brigade_create(r->pool, r->connection->bucket_alloc);
     if (bb_in == NULL) return -1;
     do {
-        int rc = ap_get_brigade(r->input_filters, bb_in, AP_MODE_SPECULATIVE, APR_BLOCK_READ, runtimeScanner->contentLength);
+        int rc = ap_get_brigade(r->input_filters, bb_in, AP_MODE_SPECULATIVE, APR_BLOCK_READ,
+                                runtimeScanner->contentLength);
         if (rc != APR_SUCCESS) {
             switch (rc) {
                 case APR_EOF:
@@ -192,7 +192,7 @@ static int fixer_upper(request_rec *r) {
 
 /* Apache callback to register our hooks.
  */
-static void defender_register_hooks(apr_pool_t *p) {
+static void defender_register_hooks(apr_pool_t *) {
     ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_LAST);
     ap_hook_post_read_request(post_read_request, NULL, NULL, APR_HOOK_REALLY_FIRST);
     ap_hook_fixups(fixer_upper, NULL, NULL, APR_HOOK_REALLY_FIRST);
@@ -201,7 +201,7 @@ static void defender_register_hooks(apr_pool_t *p) {
 /**
  * This function is called when the "MatchLog" configuration directive is parsed.
  */
-static const char *set_matchlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
+static const char *set_matchlog_path(cmd_parms *cmd, void *, const char *arg) {
     // get the module configuration (this is the structure created by create_server_config())
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
 
@@ -235,7 +235,7 @@ static const char *set_matchlog_path(cmd_parms *cmd, void *_scfg, const char *ar
 /**
  * This function is called when the "JSONMatchLog" configuration directive is parsed.
  */
-static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *_scfg, const char *arg) {
+static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *, const char *arg) {
     // get the module configuration (this is the structure created by create_server_config())
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
 
@@ -266,7 +266,7 @@ static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *_scfg, const char
     return NULL; // success
 }
 
-static const char *set_request_body_limit(cmd_parms *cmd, void *_dcfg, const char *arg) {
+static const char *set_request_body_limit(cmd_parms *cmd, void *, const char *arg) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
     unsigned long limit = strtoul(arg, NULL, 10);
     if ((limit == LONG_MAX) || (limit == LONG_MIN) || (limit <= 0)) {
@@ -276,33 +276,39 @@ static const char *set_request_body_limit(cmd_parms *cmd, void *_dcfg, const cha
     return NULL;
 }
 
-static const char *set_libinjection_sql_flag(cmd_parms *cmd, void *_dcfg, int flag) {
+static const char *set_libinjection_sql_flag(cmd_parms *cmd, void *, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
     scfg->libinjection_sql = (bool) flag;
     scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
     return NULL;
 }
 
-static const char *set_libinjection_xss_flag(cmd_parms *cmd, void *_dcfg, int flag) {
+static const char *set_libinjection_xss_flag(cmd_parms *cmd, void *, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
     scfg->libinjection_xss = (bool) flag;
     scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
     return NULL;
 }
 
-static const char *set_learning_flag(cmd_parms *cmd, void *_dcfg, int flag) {
+static const char *set_learning_flag(cmd_parms *cmd, void *, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
     scfg->learning = (bool) flag;
     return NULL;
 }
 
-static const char *set_extensive_flag(cmd_parms *cmd, void *_dcfg, int flag) {
+static const char *set_extensive_flag(cmd_parms *cmd, void *, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
     scfg->learning = (bool) flag;
     return NULL;
 }
 
-static const char *set_mainrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
+static const char *set_useenv_flag(cmd_parms *cmd, void *, int flag) {
+    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+    scfg->useenv = (bool) flag;
+    return NULL;
+}
+
+static const char *set_mainrules(cmd_parms *cmd, void *, const char *arg) {
     if (!strcmp(arg, ";")) {
         return NULL;
     }
@@ -310,11 +316,11 @@ static const char *set_mainrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
     return NULL;
 }
 
-static const char *set_checkrules(cmd_parms *cmd, void *_dcfg, const char *arg1, const char *arg2) {
+static const char *set_checkrules(cmd_parms *cmd, void *, const char *arg1, const char *arg2) {
     return parser.parseCheckRule(cmd->pool, arg1, arg2);
 }
 
-static const char *set_basicrules(cmd_parms *cmd, void *_dcfg, const char *arg) {
+static const char *set_basicrules(cmd_parms *cmd, void *, const char *arg) {
     tmpBasicRules.push_back(apr_pstrdup(cmd->pool, arg));
     return NULL;
 }
@@ -333,6 +339,7 @@ static const command_rec directives[] = {
         {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, RSRC_CONF, FLAG,    "Extensive log toggle"},
         {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, RSRC_CONF, FLAG,    "Libinjection SQL toggle"},
         {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, RSRC_CONF, FLAG,    "Libinjection XSS toggle"},
+        {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, RSRC_CONF, FLAG,    "UseEnv toggle"},
         {NULL}
 };
 
@@ -343,12 +350,12 @@ static void *create_server_config(apr_pool_t *p, server_rec *s) {
     // allocate space for the configuration structure from the provided pool p.
     server_config_t *scfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
 
-    char* error_log_abs = ap_server_root_relative(p, s->error_fname);
-    char* parent_log_dir = ap_make_dirstr_parent(p, error_log_abs);
-    char* matchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_match.log", NULL);
+    char *error_log_abs = ap_server_root_relative(p, s->error_fname);
+    char *parent_log_dir = ap_make_dirstr_parent(p, error_log_abs);
+    char *matchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_match.log", NULL);
     apr_file_open(&scfg->matchlog_fd, matchlog_path, APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
                   APR_UREAD | APR_UWRITE | APR_GREAD, p);
-    char* jsonmatchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_json_match.log", NULL);
+    char *jsonmatchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_json_match.log", NULL);
     apr_file_open(&scfg->jsonmatchlog_fd, jsonmatchlog_path, APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
                   APR_UREAD | APR_UWRITE | APR_GREAD, p);
     scfg->requestBodyLimit = 131072;
