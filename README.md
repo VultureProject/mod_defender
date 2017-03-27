@@ -47,10 +47,14 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     cat << EOF | sudo tee /etc/moddefender/moddefender.conf > /dev/null
     # Match log path
     MatchLog \${APACHE_LOG_DIR}/moddef_match.log
+    # JSON Match log path
+    JSONMatchLog /var/log/moddef_json_match.log
     # Request body limit
     RequestBodyLimit 131072
     # Learning mode toggle
     LearningMode On
+    # Extensive Learning log toggle
+    ExtensiveLog Off
     # Libinjection SQL toggle
     LibinjectionSQL Off
     # Libinjection XSS toggle
@@ -110,10 +114,14 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     cat << EOF | tee /usr/local/etc/moddefender/moddefender.conf > /dev/null
     # Match log path
     MatchLog /var/log/moddef_match.log
+    # JSON Match log path
+    JSONMatchLog /var/log/moddef_json_match.log
     # Request body limit
     RequestBodyLimit 131072
     # Learning mode toggle
     LearningMode On
+    # Extensive Learning log toggle
+    ExtensiveLog Off
     # Libinjection SQL toggle
     LibinjectionSQL Off
     # Libinjection XSS toggle
