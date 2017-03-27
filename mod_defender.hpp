@@ -48,6 +48,7 @@ typedef struct {
     bool libinjection_xss;
     bool libinjection;
     bool learning;
+    bool extensive;
     bool useenv;
 } server_config_t;
 

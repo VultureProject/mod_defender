@@ -47,11 +47,16 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
     matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
     matchVars << "var_name" << rulesMatchedCount << "=" << name;
 
-    if (rulesMatchedCount > 0)
-        jsonMatchVars << ",";
-    jsonMatchVars << "{\"zone\":\"" << match_zones[zone] << "\",";
-    jsonMatchVars << "\"id\":" << rule.id << ",";
-    jsonMatchVars << "\"var_name\":\"" << escapeQuotes(name) << "\"}";
+    if (scfg->jsonmatchlog_fd) {
+        if (rulesMatchedCount > 0)
+            jsonMatchVars << ",";
+        jsonMatchVars << "{\"zone\":\"" << match_zones[zone] << "\",";
+        jsonMatchVars << "\"id\":" << rule.id << ",";
+        jsonMatchVars << "\"var_name\":\"" << escapeQuotes(name) << "\"";
+        if (scfg->extensive)
+            jsonMatchVars << ",\"content\":\"" << escapeQuotes(value) << "\"";
+        jsonMatchVars << "}";
+    }
 
     writeExtensiveLog(rule, zone, name, value, targetName);
 
@@ -816,6 +821,8 @@ void RuntimeScanner::writeLearningLog() {
 
 void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone, const string &name,
                                        const string &value, bool targetName) {
+    if (!scfg->extensive)
+        return;
     stringstream extensivelog;
     extensivelog << naxsiTimeFmt() << " ";
     extensivelog << "[error] ";
@@ -863,7 +870,7 @@ void RuntimeScanner::writeJSONLearningLog() {
         jsonlog << "\"" << match.first << "\":" << match.second << ",";
         i++;
     }
-    jsonlog.seekp(-1, std::ios_base::end);
+    if (i > 0) jsonlog.seekp(-1, std::ios_base::end);
     jsonlog << "},";
 
     jsonlog << "\"vars\":[" << jsonMatchVars.str() << "],";

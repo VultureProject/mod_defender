@@ -298,7 +298,7 @@ static const char *set_learning_flag(cmd_parms *cmd, void *, int flag) {
 
 static const char *set_extensive_flag(cmd_parms *cmd, void *, int flag) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->learning = (bool) flag;
+    scfg->extensive = (bool) flag;
     return NULL;
 }
 
