@@ -35,13 +35,15 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
     sudo apxs -n defender -i lib/mod_defender.so
     ```
 
-1. Create its module load file for Apache2
-	```sh
-    echo "LoadModule defender_module /usr/lib/apache2/modules/mod_defender.so" | sudo tee \
-    /etc/apache2/mods-available/defender.load > /dev/null
-	```
-
-1. Add `Include /etc/moddefender/core/rules.conf` in `/etc/apache2/apache2.conf` to define core rules for all virtual hosts
+1. Create its module load file
+    ```sh
+    cat << EOF | sudo tee /etc/apache2/mods-available/defender.load > /dev/null
+    LoadModule defender_module /usr/lib/apache2/modules/mod_defender.so
+    <IfModule defender_module>
+    Include /etc/moddefender/core/rules.conf
+    </IfModule>
+    EOF
+    ```
 
 1. Add mod_defender settings in the desired virtual host
     ```sh
@@ -92,7 +94,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 	sudo a2enmod defender
 	```
 
-1. Reload Apache2 to take effect
+1. Restart Apache2 to take effect
 	```sh
 	sudo service apache2 restart
 	```
@@ -109,17 +111,22 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 	make -j 4
 	```
 
-1. Add `Include etc/moddefender/core/rules.conf` in `/usr/local/etc/apache24/httpd.conf` to define core rules for all virtual hosts
-
-1. Create its module load file for Apache2
+1. Create its module load file
    	```sh
     cat << EOF | tee /usr/local/etc/apache24/modules.d/250_mod_defender.conf > /dev/null
     LoadModule defender_module libexec/apache24/mod_defender.so
     <IfModule defender_module>
-    Include etc/moddefender/*.conf
+    Include etc/moddefender/core/rules.conf
     </IfModule>
     EOF
    	```
+
+1. Add mod_defender settings in the desired virtual host
+    ```sh
+    <IfModule defender_module>
+    Include etc/moddefender/*.conf
+    </IfModule>
+    ```
 
 1. Create Mod Defender conf directory
     ```sh
@@ -158,19 +165,19 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
     EOF
     ```
 
-1. Reload Apache2 to take effect
+1. Restart Apache2 to take effect
 	```sh
 	service apache24 restart
 	```
 
 ## Configuration hierarchy
-### Top (apache2.conf or httpd.conf)
+### Top (apache2.conf on Debian or httpd.conf on FreeBSD)
 ```
 # MainRule(s)
 Include /etc/moddefender/core/rules.conf
 ```
 
-### &lt;VirtualHost&gt; blocks (/etc/apache2/sites-available/000-default.conf or /usr/local/etc/apache24/modules.d/250_mod_defender.conf)
+### &lt;VirtualHost&gt; blocks (/etc/apache2/sites-available/000-default.conf on Debian or /usr/local/etc/apache24/httpd.conf on FreeBSD)
 ```
 # CheckRule(s)
 Include /etc/moddefender/defender.conf
