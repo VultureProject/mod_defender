@@ -63,7 +63,7 @@ static const char *logLevels[] = {
 };
 
 typedef struct {
-    size_t      len;
+    size_t      len = 0;
     u_char     *data;
 } str_t;
 

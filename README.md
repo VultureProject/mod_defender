@@ -1,9 +1,19 @@
 # Mod Defender
-Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisting policy
+Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelist policy  
+It uses the same format as NAXSI configs and thus is fully compatible with NXAPI  
+
+ - Input
+    - MainRule
+    - BasicRule
+    - CheckRule
+ - Output
+    - Learning log
+    - Extensive learning log
 
 ## Dependencies
-* apache2-dev package to provide Apache Extension Tool and Apache2 headers
-* gcc & g++ >= 5.2
+* apache dev package to provide APache eXtenSion Tool
+* apr package to provide Apache Portal Runtime library
+* gcc & g++ >= 4.9
 * make
 * cmake >= 3.2
 
@@ -11,7 +21,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 ### Debian
 1. Install dependencies
 	```sh
-	sudo apt-get install apache2-dev
+	sudo apt-get install apache2-dev make gcc g++ cmake
 	```
 
 1. Compile the source
@@ -31,20 +41,29 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
     /etc/apache2/mods-available/defender.load > /dev/null
 	```
 
-1. Add `Include /etc/moddefender/*.conf` in the desired section of your virtual host config
+1. Add `Include /etc/moddefender/core/rules.conf` in `/etc/apache2/apache2.conf` to define core rules for all virtual hosts
+
+1. Add mod_defender settings in the desired virtual host
+    ```sh
+    <IfModule defender_module>
+    Include /etc/moddefender/*.conf
+    </IfModule>
+    ```
 
 1. Create Mod Defender conf directory
     ```sh
-    sudo mkdir -p /etc/moddefender/
+    sudo mkdir -p /etc/moddefender/core/
     ```
 
 1. Populate it with conf
 	```sh
-	sudo wget -O /etc/moddefender/core_rules.conf \
+	sudo wget -O /etc/moddefender/core/rules.conf \
 	https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
 	```
     ```sh
-    cat << EOF | sudo tee /etc/moddefender/moddefender.conf > /dev/null
+    cat << EOF | sudo tee /etc/moddefender/defender.conf > /dev/null
+    # Defender toggle
+    Defender On
     # Match log path
     MatchLog \${APACHE_LOG_DIR}/moddef_match.log
     # JSON Match log path
@@ -81,7 +100,7 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 ### FreeBSD
 1. Install dependencies
 	```sh
-	pkg install apr gcc cmake
+	pkg install apr make gcc cmake
 	```
 
 1. Compile the source
@@ -89,6 +108,8 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	cmake .
 	make -j 4
 	```
+
+1. Add `Include etc/moddefender/core/rules.conf` in `/usr/local/etc/apache24/httpd.conf` to define core rules for all virtual hosts
 
 1. Create its module load file for Apache2
    	```sh
@@ -102,16 +123,18 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 
 1. Create Mod Defender conf directory
     ```sh
-    mkdir -p /usr/local/etc/moddefender/
+    mkdir -p /usr/local/etc/moddefender/core/
     ```
 
 1. Populate it with conf
 	```sh
-	wget -O /usr/local/etc/moddefender/core_rules.conf \
+	wget -O /usr/local/etc/moddefender/core/rules.conf \
 	https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
 	```
     ```sh
-    cat << EOF | tee /usr/local/etc/moddefender/moddefender.conf > /dev/null
+    cat << EOF | tee /usr/local/etc/moddefender/defender.conf > /dev/null
+    # Defender toggle
+    Defender On
     # Match log path
     MatchLog /var/log/moddef_match.log
     # JSON Match log path
@@ -139,3 +162,18 @@ Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelisti
 	```sh
 	service apache24 restart
 	```
+
+## Configuration hierarchy
+### Top (apache2.conf or httpd.conf)
+```
+# MainRule(s)
+Include /etc/moddefender/core/rules.conf
+```
+
+### &lt;VirtualHost&gt; blocks (/etc/apache2/sites-available/000-default.conf or /usr/local/etc/apache24/modules.d/250_mod_defender.conf)
+```
+# CheckRule(s)
+Include /etc/moddefender/defender.conf
+# BasicRule(s)
+Include /etc/moddefender/wordpress.conf
+```

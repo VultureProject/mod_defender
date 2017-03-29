@@ -11,13 +11,6 @@
 #ifndef MOD_DEFENDER_HPP
 #define MOD_DEFENDER_HPP
 
-#include <httpd.h>
-#include <http_protocol.h>
-#include <http_config.h>
-#include <http_connection.h>
-#include <http_core.h>
-#include <http_log.h>
-#include <apr_strings.h>
 #include "RuleParser.h"
 
 // Shell colors
@@ -30,15 +23,13 @@
 #define KCYN  "\x1B[36m"
 #define KWHT  "\x1B[37m"
 
-// Extra Apache 2.4+ C++ module declaration
-#ifdef APLOG_USE_MODULE
-APLOG_USE_MODULE(defender);
-#endif
-
 /*
  * Per-server configuration structure.
  */
 typedef struct {
+    RuleParser *parser;
+    vector<pair<string, string>> tmpCheckRules;
+    vector<string> tmpBasicRules;
     char *matchlog_path;
     char *jsonmatchlog_path;
     apr_file_t *matchlog_fd;
@@ -47,6 +38,7 @@ typedef struct {
     bool libinjection_sql;
     bool libinjection_xss;
     bool libinjection;
+    bool defender;
     bool learning;
     bool extensive;
     bool useenv;

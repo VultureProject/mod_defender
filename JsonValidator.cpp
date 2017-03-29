@@ -10,6 +10,8 @@
 
 #include "JsonValidator.hpp"
 #include "RuntimeScanner.hpp"
+#include "mod_defender.hpp"
+#include "RuleParser.h"
 
 bool JsonValidator::jsonForward(json_t &js) {
     while ((*(js.src + js.off) == ' ' ||
@@ -108,8 +110,7 @@ bool JsonValidator::jsonVal(json_t &js) {
             string value = string((char *) val.data, val.len);
             transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
             transform(value.begin(), value.end(), value.begin(), tolower);
-            runtimeScanner.basestrRuleset(BODY, jsckey, value, runtimeScanner.parser.bodyRules);
-
+            runtimeScanner.basestrRuleset(BODY, jsckey, value, bodyRules);
             ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, runtimeScanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
                            (char *) val.data);
         }
@@ -127,7 +128,7 @@ bool JsonValidator::jsonVal(json_t &js) {
         string value = string((char *) val.data, val.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
-        runtimeScanner.basestrRuleset(BODY, jsckey, value, runtimeScanner.parser.bodyRules);
+        runtimeScanner.basestrRuleset(BODY, jsckey, value, bodyRules);
         ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, runtimeScanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
                        (char *) val.data);
         return true;
@@ -150,7 +151,7 @@ bool JsonValidator::jsonVal(json_t &js) {
         string value = string((char *) val.data, val.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
-        runtimeScanner.basestrRuleset(BODY, jsckey, value, runtimeScanner.parser.bodyRules);
+        runtimeScanner.basestrRuleset(BODY, jsckey, value, bodyRules);
 
         ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, runtimeScanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
                        (char *) val.data);
@@ -173,7 +174,7 @@ bool JsonValidator::jsonVal(json_t &js) {
         */
         string jsckey = string((char *) js.ckey.data, js.ckey.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
-        runtimeScanner.basestrRuleset(BODY, jsckey, empty, runtimeScanner.parser.bodyRules);
+        runtimeScanner.basestrRuleset(BODY, jsckey, empty, bodyRules);
 
         ret = jsonObj(js);
         jsonForward(js);

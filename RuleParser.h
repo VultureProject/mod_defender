@@ -18,9 +18,20 @@
 #include <algorithm>
 #include <iterator>
 #include "Util.h"
-#include "mod_defender.hpp"
 #include <regex>
 #include <unordered_map>
+#include <httpd.h>
+#include <http_protocol.h>
+#include <http_config.h>
+#include <http_connection.h>
+#include <http_core.h>
+#include <http_log.h>
+#include <apr_strings.h>
+
+// Extra Apache 2.4+ C++ module declaration
+#ifdef APLOG_USE_MODULE
+APLOG_USE_MODULE(defender);
+#endif
 
 //#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
@@ -224,21 +235,23 @@ typedef struct {
     basic_rule_t br; // specific rule stuff
 } http_rule_t;
 
+extern vector<string> tmpMainRules;
+
+extern vector<http_rule_t> getRules;
+extern vector<http_rule_t> bodyRules;
+extern vector<http_rule_t> rawBodyRules;
+extern vector<http_rule_t> headerRules;
+extern vector<http_rule_t> genericRules; // URL
+
 class RuleParser {
 private:
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
     bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, MATCH_ZONE zone, bool targetName);
     bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
-    string parseCode(std::regex_constants::error_type etype);
 
 public:
     unordered_map<string, check_rule_t> checkRules;
-    vector<http_rule_t> getRules;
-    vector<http_rule_t> bodyRules;
-    vector<http_rule_t> rawBodyRules;
-    vector<http_rule_t> headerRules;
-    vector<http_rule_t> genericRules; // URL
 
     vector<whitelist_rule_t> tmpWlr; // raw array of transformed whitelists
     vector<http_rule_t> rxMzWlr; // raw array of regex-mz whitelists
@@ -260,10 +273,11 @@ public:
     http_rule_t libxssRule;
 
     RuleParser();
-    unsigned int parseMainRules(vector<string> rulesArray);
-    const char* parseCheckRule(apr_pool_t* pool, string equation, string actionArg);
-    unsigned int parseBasicRules(vector<string> rulesArray);
-    void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
+    static unsigned int parseMainRules(vector<string> &rulesArray);
+    void parseCheckRule(vector<pair<string, string>> &rulesArray);
+    unsigned int parseBasicRules(vector<string> &rulesArray);
+    static void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
+    static string parseCode(std::regex_constants::error_type etype);
     void generateHashTables();
     void wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
     void wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, MATCH_ZONE &zone, int &uriIndex, int &name_idx);

@@ -14,6 +14,7 @@
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
 #include "mod_defender.hpp"
+#include "RuleParser.h"
 
 void RuntimeScanner::streamToFile(const stringstream &ss, apr_file_t *fd) {
     if (!fd) return;
@@ -520,7 +521,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             transform(finalVar.begin(), finalVar.end(), finalVar.begin(), tolower);
             transform(finalData.begin(), finalData.end(), finalData.begin(), tolower);
 //            cerr << finalVar << ":" << finalData << endl;
-            basestrRuleset(FILE_EXT, finalVar, finalData, parser.bodyRules);
+            basestrRuleset(FILE_EXT, finalVar, finalData, bodyRules);
 
             idx += end - (src + idx);
         } else if (varn_start) {
@@ -546,7 +547,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             transform(finalVar.begin(), finalVar.end(), finalVar.begin(), tolower);
             transform(finalData.begin(), finalData.end(), finalData.begin(), tolower);
 //            cerr << finalVar << ":" << finalData << endl;
-            basestrRuleset(BODY, finalVar, finalData, parser.bodyRules);
+            basestrRuleset(BODY, finalVar, finalData, bodyRules);
 
             idx += end - (src + idx);
         } else {
@@ -695,7 +696,7 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
             contentTypeFound = true;
         }
         transform(val.begin(), val.end(), val.begin(), tolower);
-        basestrRuleset(HEADERS, key, val, parser.headerRules);
+        basestrRuleset(HEADERS, key, val, headerRules);
     }
 
     /* Retrieve GET parameters */
@@ -709,10 +710,10 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
         string val = string(getParam[i].val);
         transform(key.begin(), key.end(), key.begin(), tolower);
         transform(val.begin(), val.end(), val.begin(), tolower);
-        basestrRuleset(ARGS, key, val, parser.getRules);
+        basestrRuleset(ARGS, key, val, getRules);
     }
 
-    basestrRuleset(URL, empty, uri, parser.genericRules);
+    basestrRuleset(URL, empty, uri, genericRules);
 
     if (r->method_number == M_POST || r->method_number == M_PUT)
         return DECLINED;
@@ -737,7 +738,7 @@ int RuntimeScanner::processBody() {
 
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
-        if (splitUrlEncodedRuleset(&rawBody[0], parser.bodyRules, BODY)) {
+        if (splitUrlEncodedRuleset(&rawBody[0], bodyRules, BODY)) {
             applyRuleMatch(parser.uncommonUrl, 1, BODY, empty, empty, false);
             block = drop = true;
         }
@@ -748,6 +749,7 @@ int RuntimeScanner::processBody() {
     }
         /* If Content-Type: application/json */
     else if (contentType == APP_JSON) {
+        JsonValidator jsonValidator = JsonValidator(*this);
         jsonValidator.jsonParse((u_char *) &rawBody[0], rawBody.length());
     }
         /* Raw Body */
@@ -759,7 +761,7 @@ int RuntimeScanner::processBody() {
         naxsi_unescape(&body);
         rawBody.resize(body.len);
 
-        basestrRuleset(RAW_BODY, empty, rawBody, parser.rawBodyRules);
+        basestrRuleset(RAW_BODY, empty, rawBody, rawBodyRules);
     }
 
     return processAction();

@@ -11,6 +11,14 @@
 #include <apr_strings.h>
 #include "RuleParser.h"
 
+vector<string> tmpMainRules;
+
+vector<http_rule_t> getRules;
+vector<http_rule_t> bodyRules;
+vector<http_rule_t> rawBodyRules;
+vector<http_rule_t> headerRules;
+vector<http_rule_t> genericRules; // URL
+
 RuleParser::RuleParser() {
     /* Internal rules */
     bigRequest.id = 2;
@@ -44,7 +52,13 @@ RuleParser::RuleParser() {
     libxssRule.scores.emplace_back("$XSS", 8);
 }
 
-unsigned int RuleParser::parseMainRules(vector<string> rulesArray) {
+unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
+    getRules.clear();
+    bodyRules.clear();
+    rawBodyRules.clear();
+    headerRules.clear();
+    genericRules.clear();
+
     unsigned int ruleCount = 0;
     for (int i = 0; i < rulesArray.size(); i += 5) {
         bool error = false;
@@ -57,19 +71,19 @@ unsigned int RuleParser::parseMainRules(vector<string> rulesArray) {
             DEBUG_CONF_MR("negative ");
             i++;
         }
-        pair<string, string> matchPatern = splitAtFirst(rulesArray[i], ":");
-        if (matchPatern.first == "rx") {
+        pair<string, string> matchPattern = splitAtFirst(rulesArray[i], ":");
+        if (matchPattern.first == "rx") {
             try {
-                rule.br.rx = regex(matchPatern.second, std::regex::optimize);
+                rule.br.rx = regex(matchPattern.second, std::regex::optimize);
             } catch (std::regex_error &e) {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPatern.second.c_str(),
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPattern.second.c_str(),
                              parseCode(e.code()).c_str());
                 error = true;
             }
-            DEBUG_CONF_MR("rx " << matchPatern.second << " ");
+            DEBUG_CONF_MR("rx " << matchPattern.second << " ");
         }
-        if (matchPatern.first == "str") {
-            rule.br.str = matchPatern.second;
+        if (matchPattern.first == "str") {
+            rule.br.str = matchPattern.second;
             DEBUG_CONF_MR("str " << rule.br.str << " ");
         }
 
@@ -125,66 +139,69 @@ unsigned int RuleParser::parseMainRules(vector<string> rulesArray) {
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%lu skipped", rule.id);
         DEBUG_CONF_MR(endl);
     }
+    rulesArray.clear();
     return ruleCount;
 }
 
-const char* RuleParser::parseCheckRule(apr_pool_t* pool, string equation, string action) {
-    DEBUG_CONF_CR("CheckRule ");
-    check_rule_t chkrule;
-    vector<string> eqParts = split(equation, ' ');
+void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
+    // prev args: apr_pool_t *pool, string equation, string action
+    for (const pair<string, string> &rule : rulesArray) {
+        const string &equation = rule.first;
+        const string &action = rule.second;
 
-    string tag = (std::basic_string<char, std::char_traits<char>, std::allocator<char>> &&) rtrim(eqParts[0]);
-    DEBUG_CONF_CR(tag << " ");
+        DEBUG_CONF_CR("CheckRule ");
+        check_rule_t chkrule;
+        vector<string> eqParts = split(equation, ' ');
 
-    if (eqParts[1] == ">=") {
-        chkrule.comparator = SUP_OR_EQUAL;
-        DEBUG_CONF_CR(">= ");
-    }
-    else if (eqParts[1] == ">") {
-        chkrule.comparator = SUP;
-        DEBUG_CONF_CR("> ");
-    }
-    else if (eqParts[1] == "<=") {
-        chkrule.comparator = INF_OR_EQUAL;
-        DEBUG_CONF_CR("<= ");
-    }
-    else if (eqParts[1] == "<") {
-        chkrule.comparator = INF;
-        DEBUG_CONF_CR("< ");
-    }
+        string tag = (std::basic_string<char, std::char_traits<char>, std::allocator<char>> &&) rtrim(eqParts[0]);
+        DEBUG_CONF_CR(tag << " ");
 
-    try {
-        chkrule.limit = std::stoul(eqParts[2]);
-        DEBUG_CONF_CR(chkrule.limit << " ");
-    }
-    catch (std::exception const &e) {
-        return apr_psprintf(pool, "%s cannot convert \"%s\" to interger", e.what(), eqParts[2].c_str());
-    }
+        if (eqParts[1] == ">=") {
+            chkrule.comparator = SUP_OR_EQUAL;
+            DEBUG_CONF_CR(">= ");
+        } else if (eqParts[1] == ">") {
+            chkrule.comparator = SUP;
+            DEBUG_CONF_CR("> ");
+        } else if (eqParts[1] == "<=") {
+            chkrule.comparator = INF_OR_EQUAL;
+            DEBUG_CONF_CR("<= ");
+        } else if (eqParts[1] == "<") {
+            chkrule.comparator = INF;
+            DEBUG_CONF_CR("< ");
+        }
 
-    if (action == "BLOCK") {
-        chkrule.action = BLOCK;
-        DEBUG_CONF_CR("BLOCK ");
-    }
-    else if (action == "DROP") {
-        chkrule.action = DROP;
-        DEBUG_CONF_CR("DROP ");
-    }
-    else if (action == "ALLOW") {
-        chkrule.action = ALLOW;
-        DEBUG_CONF_CR("ALLOW ");
-    }
-    else if (action == "LOG") {
-        chkrule.action = LOG;
-        DEBUG_CONF_CR("LOG ");
-    }
+        try {
+            chkrule.limit = std::stoul(eqParts[2]);
+            DEBUG_CONF_CR(chkrule.limit << " ");
+        }
+        catch (std::exception const &e) {
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert \"%s\" to interger", e.what(),
+                         eqParts[2].c_str());
+            continue;
+        }
 
-    checkRules[tag] = chkrule;
+        if (action == "BLOCK") {
+            chkrule.action = BLOCK;
+            DEBUG_CONF_CR("BLOCK ");
+        } else if (action == "DROP") {
+            chkrule.action = DROP;
+            DEBUG_CONF_CR("DROP ");
+        } else if (action == "ALLOW") {
+            chkrule.action = ALLOW;
+            DEBUG_CONF_CR("ALLOW ");
+        } else if (action == "LOG") {
+            chkrule.action = LOG;
+            DEBUG_CONF_CR("LOG ");
+        }
 
-    DEBUG_CONF_CR(endl);
-    return NULL;
+        checkRules[tag] = chkrule;
+
+        DEBUG_CONF_CR(endl);
+    }
+    rulesArray.clear();
 }
 
-unsigned int RuleParser::parseBasicRules(vector<string> rulesArray) {
+unsigned int RuleParser::parseBasicRules(vector<string> &rulesArray) {
     unsigned int ruleCount = 0;
     for (int i = 0; i < rulesArray.size(); i += 3) {
         DEBUG_CONF_BR("BasicRule ");
@@ -213,6 +230,7 @@ unsigned int RuleParser::parseBasicRules(vector<string> rulesArray) {
         ruleCount++;
         DEBUG_CONF_BR(endl);
     }
+    rulesArray.clear();
     return ruleCount;
 }
 
@@ -223,34 +241,27 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
             if (mz == "ARGS") {
                 rule.br.argsMz = true;
                 DEBUG_CONF_MZ("ARGS ");
-            }
-            else if (mz == "HEADERS") {
+            } else if (mz == "HEADERS") {
                 rule.br.headersMz = true;
                 DEBUG_CONF_MZ("HEADERS ");
-            }
-            else if (mz == "URL") {
+            } else if (mz == "URL") {
                 rule.br.urlMz = true;
                 DEBUG_CONF_MZ("URL ");
-            }
-            else if (mz == "BODY") {
+            } else if (mz == "BODY") {
                 rule.br.bodyMz = true;
                 DEBUG_CONF_MZ("BODY ");
-            }
-            else if (mz == "RAWBODY") {
+            } else if (mz == "RAWBODY") {
                 rule.br.rawBodyMz = true;
                 DEBUG_CONF_MZ("RAWBODY ");
-            }
-            else if (mz == "FILE_EXT") {
+            } else if (mz == "FILE_EXT") {
                 rule.br.fileExtMz = true;
                 rule.br.bodyMz = true;
                 DEBUG_CONF_MZ("FILE_EXT ");
-            }
-            else if (mz == "NAME") {
+            } else if (mz == "NAME") {
                 rule.br.targetName = true;
                 DEBUG_CONF_MZ("NAME ");
             }
-        }
-        else {
+        } else {
             custom_rule_location_t customRule;
             rule.br.customLocation = true;
             pair<string, string> cmz = splitAtFirst(mz, ":");
@@ -259,42 +270,34 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                 customRule.argsVar = true;
                 rule.br.argsVarMz = true;
                 DEBUG_CONF_MZ("$ARGS_VAR ");
-            }
-            else if (cmz.first == "$HEADERS_VAR") {
+            } else if (cmz.first == "$HEADERS_VAR") {
                 customRule.headersVar = true;
                 rule.br.headersVarMz = true;
                 DEBUG_CONF_MZ("$HEADERS_VAR ");
-            }
-            else if (cmz.first == "$URL") {
+            } else if (cmz.first == "$URL") {
                 customRule.specificUrl = true;
                 rule.br.specificUrlMz = true;
                 DEBUG_CONF_MZ("$URL ");
-            }
-            else if (cmz.first == "$BODY_VAR") {
+            } else if (cmz.first == "$BODY_VAR") {
                 customRule.bodyVar = true;
                 rule.br.bodyVarMz = true;
                 DEBUG_CONF_MZ("$BODY_VAR ");
-            }
-
-            else if (cmz.first == "$ARGS_VAR_X") {
+            } else if (cmz.first == "$ARGS_VAR_X") {
                 customRule.argsVar = true;
                 rule.br.argsVarMz = true;
                 rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$ARGS_VAR_X ");
-            }
-            else if (cmz.first == "$HEADERS_VAR_X") {
+            } else if (cmz.first == "$HEADERS_VAR_X") {
                 customRule.headersVar = true;
                 rule.br.headersVarMz = true;
                 rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$HEADERS_VAR_X ");
-            }
-            else if (cmz.first == "$URL_X") {
+            } else if (cmz.first == "$URL_X") {
                 customRule.specificUrl = true;
                 rule.br.specificUrlMz = true;
                 rule.br.rxMz = true;
                 DEBUG_CONF_MZ("$URL_X ");
-            }
-            else if (cmz.first == "$BODY_VAR_X") {
+            } else if (cmz.first == "$BODY_VAR_X") {
                 customRule.bodyVar = true;
                 rule.br.bodyVarMz = true;
                 rule.br.rxMz = true;
@@ -305,8 +308,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                 std::transform(cmz.second.begin(), cmz.second.end(), cmz.second.begin(), tolower);
                 customRule.target = cmz.second;
                 DEBUG_CONF_MZ("(str)" << cmz.second << " ");
-            }
-            else { // Regex MatchZone
+            } else { // Regex MatchZone
                 try {
                     customRule.targetRx = regex(cmz.second, std::regex::optimize);
                 } catch (std::regex_error &e) {
@@ -378,16 +380,13 @@ void RuleParser::wlrFind(const http_rule_t &curr, whitelist_rule_t &father_wlr, 
     if (uriIndex != -1 && nameIndex != -1) { // name AND uri
         DEBUG_CONF_WLRF("whitelist has uri + name");
         fullname += curr.br.customLocations[uriIndex].target + "#" + curr.br.customLocations[nameIndex].target;
-    }
-    else if (uriIndex != -1) { // only uri
+    } else if (uriIndex != -1) { // only uri
         DEBUG_CONF_WLRF("whitelist has uri");
         fullname += curr.br.customLocations[uriIndex].target;
-    }
-    else if (nameIndex != -1) { // only name
+    } else if (nameIndex != -1) { // only name
         DEBUG_CONF_WLRF("whitelist has name");
         fullname += curr.br.customLocations[nameIndex].target;
-    }
-    else {
+    } else {
         DEBUG_CONF_WLRF("wlrFind problem");
         return;
     }
@@ -529,8 +528,8 @@ bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name
 
     if (type == NAME_ONLY) {
         DEBUG_CONF_WL("Name match in zone " <<
-                      (zone == ARGS ? "ARGS" : zone == BODY ? "BODY" : zone == HEADERS ? "HEADERS"
-                                                                                       : "UNKNOWN!!!!!"));
+                                            (zone == ARGS ? "ARGS" : zone == BODY ? "BODY" : zone == HEADERS ? "HEADERS"
+                                                                                                             : "UNKNOWN!!!!!"));
         //False Positive, there was a whitelist that matches the argument name,
         // But is was actually matching an existing URI name.
         if (zone != wlrule.zone || wlrule.uriOnly) {
@@ -704,7 +703,7 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
         */
         if (rxMzRule.br.zone != zone) {
             DEBUG_CONF_WL("Not targeting same zone: custom rule loc zone: " << match_zones[rxMzRule.br.zone] <<
-                          " current zone: " << match_zones[zone]);
+                                                                            " current zone: " << match_zones[zone]);
             continue;
         }
 
@@ -723,8 +722,7 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
                         break;
                     }
                     DEBUG_CONF_WL("[BODY] Match (str:" << name << ")");
-                }
-                else {
+                } else {
                     if (!regex_search(name, loc.targetRx)) {
                         violation = true;
                         DEBUG_CONF_WL("[BODY] RX FAIL (str:" << name << ")");
@@ -741,8 +739,7 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
                         break;
                     }
                     DEBUG_CONF_WL("[ARGS] Match (str:" << name << ")");
-                }
-                else {
+                } else {
                     if (!regex_search(name, loc.targetRx)) {
                         violation = true;
                         DEBUG_CONF_WL("[ARGS] RX FAIL (str:" << name << ")");
@@ -759,8 +756,7 @@ bool RuleParser::isRuleWhitelistedRx(const http_rule_t &rule, const string uri, 
                         break;
                     }
                     DEBUG_CONF_WL("[URI] Match (str:" << uri << ")");
-                }
-                else {
+                } else {
                     if (!regex_search(uri, loc.targetRx)) {
                         violation = true;
                         DEBUG_CONF_WL("[URI] RX FAIL (str:" << uri << ")");
@@ -787,22 +783,19 @@ bool RuleParser::findWlInHash(whitelist_rule_t &wlRule, const string &key, MATCH
             wlRule = it->second;
             return true;
         }
-    }
-    else if (zone == HEADERS) {
+    } else if (zone == HEADERS) {
         unordered_map<string, whitelist_rule_t>::const_iterator it = wlHeadersHash.find(key);
         if (it != wlHeadersHash.end()) {
             wlRule = it->second;
             return true;
         }
-    }
-    else if (zone == URL) {
+    } else if (zone == URL) {
         unordered_map<string, whitelist_rule_t>::const_iterator it = wlUrlHash.find(key);
         if (it != wlUrlHash.end()) {
             wlRule = it->second;
             return true;
         }
-    }
-    else if (zone == ARGS) {
+    } else if (zone == ARGS) {
         unordered_map<string, whitelist_rule_t>::const_iterator it = wlArgsHash.find(key);
         if (it != wlArgsHash.end()) {
             wlRule = it->second;

@@ -27,9 +27,9 @@ class RuntimeScanner;
 typedef struct {
     str_t json;
     u_char *src;
-    unsigned long off, len;
+    unsigned long off = 0, len = 0;
     u_char c;
-    int depth;
+    int depth = 0;
     str_t ckey;
 } json_t;
 
@@ -37,15 +37,15 @@ class JsonValidator {
     friend class RuntimeScanner;
 private:
     RuntimeScanner& runtimeScanner;
-public:
-    JsonValidator(RuntimeScanner &runtimeScanner) : runtimeScanner(runtimeScanner) {}
     bool jsonObj(json_t &js);
     bool jsonVal(json_t &js);
     bool jsonArray(json_t &js);
     bool jsonQuoted(json_t &js, str_t *ve);
-    void jsonParse(u_char *src, unsigned long len);
     bool jsonForward(json_t &js);
     bool jsonSeek(json_t &js, unsigned char seek);
+public:
+    JsonValidator(RuntimeScanner& runtimeScanner) : runtimeScanner(runtimeScanner) {}
+    void jsonParse(u_char *src, unsigned long len);
 };
 
 #endif //MOD_DEFENDER_JSONVALIDATOR_H
