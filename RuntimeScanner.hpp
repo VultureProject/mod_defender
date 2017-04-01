@@ -88,7 +88,7 @@ public:
 
     RuntimeScanner(server_config_t *scfg, RuleParser &parser) : scfg(scfg), parser(parser) {}
     void streamToFile(const stringstream &ss, apr_file_t* fd);
-    int postReadRequest(request_rec *rec);
+    int processHeaders(request_rec *rec);
     void applyCheckRuleAction(const rule_action_t &action, stringstream &errlog);
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,

@@ -39,32 +39,11 @@ using std::endl;
 using std::istringstream;
 using std::pair;
 
-enum DEF_LOGLEVEL {
-    DEFLOG_EMERG = 0,
-    DEFLOG_ALERT,
-    DEFLOG_CRIT,
-    DEFLOG_ERROR,
-    DEFLOG_WARN,
-    DEFLOG_NOTICE,
-    DEFLOG_INFO,
-    DEFLOG_DEBUG
-};
-
-static const char *logLevels[] = {
-        "emerg",
-        "alert",
-        "crit",
-        "error",
-        "warn",
-        "notice",
-        "info",
-        "debug",
-        NULL
-};
+static const char *logLevels[] = {"emerg", "alert", "crit", "error", "warn", "notice", "info", "debug", NULL};
 
 typedef struct {
-    size_t      len = 0;
-    u_char     *data;
+    size_t len = 0;
+    u_char *data;
 } str_t;
 
 namespace Util {
@@ -92,24 +71,24 @@ namespace Util {
         return count;
     }
 
-    inline unsigned long countSubstring(const char* str, size_t len, const char* pattern, size_t patternLen) {
-        char* p;
+    inline unsigned long countSubstring(const char *str, size_t len, const char *pattern, size_t patternLen) {
+        char *p;
         unsigned long count = 0;
         unsigned long idx = 0;
-        while ((p = (char*) memmem(str + idx, len - idx, pattern, patternLen)) != NULL) {
+        while ((p = (char *) memmem(str + idx, len - idx, pattern, patternLen)) != NULL) {
             count++;
             idx = (p - str) + patternLen;
         }
         return count;
     }
 
-    inline unsigned long countSubstring(const char* str, const char* pattern, size_t patternLen) {
-         unsigned long count = 0;
-         char* p = (char*) str;
-         while ((p = strstr(p, pattern)) != NULL) {
-             count++;
-             p += patternLen;
-         }
+    inline unsigned long countSubstring(const char *str, const char *pattern, size_t patternLen) {
+        unsigned long count = 0;
+        char *p = (char *) str;
+        while ((p = strstr(p, pattern)) != NULL) {
+            count++;
+            p += patternLen;
+        }
         return count;
     }
 
@@ -146,7 +125,7 @@ namespace Util {
         return (nullbytes + bad);
     }
 
-    inline char* strnchr(const char *s, int c, unsigned long len) {
+    inline char *strnchr(const char *s, int c, unsigned long len) {
         int cpt;
         for (cpt = 0; cpt < len && s[cpt]; cpt++)
             if (s[cpt] == c)
@@ -155,11 +134,17 @@ namespace Util {
     }
 
     vector<string> split(const string &s, char delim);
+
     pair<string, string> splitAtFirst(const string &s, string delim);
+
     vector<int> splitToInt(string &s, char delimiter);
+
     string apacheTimeFmt();
+
     string naxsiTimeFmt();
-    string formatLog(enum DEF_LOGLEVEL loglevel, char *client);
+
+    string formatLog(int loglevel, char *client);
+
     string escapeQuotes(const string &before);
 }
 

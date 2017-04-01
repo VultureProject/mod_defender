@@ -177,7 +177,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 Include /etc/moddefender/core/rules.conf
 ```
 
-### &lt;VirtualHost&gt; blocks (/etc/apache2/sites-available/000-default.conf on Debian or /usr/local/etc/apache24/httpd.conf on FreeBSD)
+### &lt;VirtualHost&gt; blocks (000-default.conf on Debian or httpd.conf on FreeBSD)
 ```
 # CheckRule(s)
 Include /etc/moddefender/defender.conf

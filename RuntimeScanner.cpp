@@ -25,19 +25,21 @@ void RuntimeScanner::streamToFile(const stringstream &ss, apr_file_t *fd) {
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
-    stringstream errlog;
-    errlog << formatLog(DEFLOG_ERROR, r->useragent_ip);
-    errlog << KRED "⚠ Rule #" << rule.id << " ";
-    errlog << "(" << rule.logMsg << ") ";
-    errlog << "matched " << nbMatch << " times ";
-    if (targetName)
-        errlog << "in name ";
-    errlog << "at " << match_zones[zone] << " ";
-    errlog << name;
-    if (!value.empty())
-        errlog << ":" << value;
-    errlog << KNRM << endl;
-    streamToFile(errlog, r->server->error_log);
+    if (r->log->level >= APLOG_WARNING) {
+        stringstream errlog;
+        errlog << formatLog(APLOG_WARNING, r->useragent_ip);
+        errlog << KRED "⚠ Rule #" << rule.id << " ";
+        errlog << "(" << rule.logMsg << ") ";
+        errlog << "matched " << nbMatch << " times ";
+        if (targetName)
+            errlog << "in name ";
+        errlog << "at " << match_zones[zone] << " ";
+        errlog << name;
+        if (!value.empty())
+            errlog << ":" << value;
+        errlog << KNRM << endl;
+        streamToFile(errlog, r->server->error_log);
+    }
 
     if (!scfg->learning)
         return;
@@ -66,16 +68,23 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
 
 void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action, stringstream &errlog) {
     if (action == BLOCK) {
-        errlog << "BLOCK" << KNRM << endl;
+        if (r->log->level >= APLOG_WARNING) {
+            errlog << "BLOCK ";
+            if (scfg->learning) errlog << "(learning)";
+            errlog << KNRM << endl;
+        }
         block = true;
     } else if (action == DROP) {
-        errlog << "DROP" << KNRM << endl;
+        if (r->log->level >= APLOG_WARNING)
+            errlog << "DROP" << KNRM << endl;
         drop = true;
     } else if (action == ALLOW) {
-        errlog << "ALLOW" << KNRM << endl;
+        if (r->log->level >= APLOG_WARNING)
+            errlog << "ALLOW" << KNRM << endl;
         allow = true;
     } else if (action == LOG) {
-        errlog << "LOG" << KNRM << endl;
+        if (r->log->level >= APLOG_WARNING)
+            errlog << "LOG" << KNRM << endl;
         log = true;
     }
 }
@@ -83,17 +92,17 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action, stringstr
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
                                     const string &value, MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
-        if (!scfg->learning)
-            return;
-        stringstream errlog;
-        errlog << formatLog(DEFLOG_WARN, r->useragent_ip);
-        errlog << KGRN "✓ Rule #" << rule.id << " ";
-        errlog << "(" << rule.logMsg << ") ";
-        errlog << "whitelisted ";
-        if (targetName)
-            errlog << "in name ";
-        errlog << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
-        streamToFile(errlog, r->server->error_log);
+        if (scfg->learning && r->log->level >= APLOG_NOTICE) {
+            stringstream errlog;
+            errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
+            errlog << KGRN "✓ Rule #" << rule.id << " ";
+            errlog << "(" << rule.logMsg << ") ";
+            errlog << "whitelisted ";
+            if (targetName)
+                errlog << "in name ";
+            errlog << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
+            streamToFile(errlog, r->server->error_log);
+        }
         return;
     }
     // negative rule case
@@ -108,8 +117,10 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
         int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
 
-        errlog << formatLog(DEFLOG_WARN, r->useragent_ip);
-        errlog << KYEL "→ Score " << tagScore.first << " = " << score << " ";
+        if (r->log->level >= APLOG_WARNING) {
+            errlog << formatLog(APLOG_WARNING, r->useragent_ip);
+            errlog << KYEL "→ Score " << tagScore.first << " = " << score << " ";
+        }
         check_rule_t &checkRule = parser.checkRules[tagScore.first];
         if (checkRule.comparator == SUP_OR_EQUAL)
             matched = (score >= checkRule.limit);
@@ -119,12 +130,13 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
             matched = (score <= checkRule.limit);
         else if (checkRule.comparator < INF)
             matched = (score < checkRule.limit);
-        if (matched)
+        if (matched && r->log->level >= APLOG_WARNING)
             applyCheckRuleAction(checkRule.action, errlog);
-        else
+        else if (r->log->level >= APLOG_WARNING)
             errlog << KNRM << endl;
     }
-    streamToFile(errlog, r->server->error_log);
+    if (r->log->level >= APLOG_WARNING)
+        streamToFile(errlog, r->server->error_log);
 }
 
 bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
@@ -333,9 +345,9 @@ bool RuntimeScanner::contentDispositionParser(unsigned char *str, unsigned char 
             break;
         else {
             /* gargabe is present ?*/
-            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r,
-                           "extra data in content-disposition ? end:%s, str:%s, diff=%ld", line_end, str,
-                           line_end - str);
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
+                          "extra data in content-disposition ? end:%s, str:%s, diff=%ld", line_end, str,
+                          line_end - str);
             return false;
         }
     }
@@ -370,8 +382,8 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
     /*extract boundary*/
     if (!parseFormDataBoundary(&boundary, &boundary_len)) {
         if (boundary && boundary_len > 1)
-            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
-                           boundary_len);
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
+                          boundary_len);
         applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", empty, false);
         block = drop = true;
         return;
@@ -496,7 +508,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             }
         }
         if (!end) {
-            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "POST data : malformed line");
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "POST data : malformed line");
             return;
         }
         if (filen_start) {
@@ -551,7 +563,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
 
             idx += end - (src + idx);
         } else {
-            ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "(multipart) : ");
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "(multipart) : ");
         }
         if (!strncmp((const char *) end, "\r\n", 2))
             idx += 2;
@@ -583,7 +595,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
         ev = strchr(str, '&');
 
         if ((!eq && !ev) /*?foobar */ || (eq && ev && eq > ev)) /*?foobar&bla=test*/ {
-            ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '&' and '=' or has both [%s]", str);
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '&' and '=' or has both [%s]", str);
 
             if (!ev)
                 ev = str + strlen(str);
@@ -598,7 +610,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
         }
             /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
         else if (!eq) {
-            ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '=' but has '&' [%s]", str);
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '=' but has '&' [%s]", str);
 
             applyRuleMatch(parser.uncommonUrl, 1, zone, empty, empty, false);
             if (ev > str) /* ?var& | ?var&val */ {
@@ -658,7 +670,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
     return false;
 }
 
-int RuntimeScanner::postReadRequest(request_rec *rec) {
+int RuntimeScanner::processHeaders(request_rec *rec) {
     r = rec;
 
     /* Store the uri path */
@@ -679,8 +691,8 @@ int RuntimeScanner::postReadRequest(request_rec *rec) {
                 contentLength = std::stoul(val);
             }
             catch (std::exception const &e) {
-                ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, r, "%s cannot convert content-type: \"%s\" to interger",
-                               e.what(), val.c_str());
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "%s cannot convert content-type: \"%s\" to interger",
+                              e.what(), val.c_str());
             }
         }
             /* Store Content-Type for further processing */

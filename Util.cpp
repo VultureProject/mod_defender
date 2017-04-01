@@ -83,7 +83,7 @@ namespace Util {
         return string(buffer);
     }
 
-    string formatLog(enum DEF_LOGLEVEL loglevel, char *client) {
+    string formatLog(int loglevel, char *client) {
         stringstream ss;
         ss << "[" << apacheTimeFmt() << "] ";
         ss << "[defender:" << logLevels[loglevel] << "] ";

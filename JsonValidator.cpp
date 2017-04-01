@@ -110,8 +110,8 @@ bool JsonValidator::jsonVal(json_t &js) {
             string value = string((char *) val.data, val.len);
             transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
             transform(value.begin(), value.end(), value.begin(), tolower);
-            runtimeScanner.basestrRuleset(BODY, jsckey, value, bodyRules);
-            ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, runtimeScanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
+            scanner.basestrRuleset(BODY, jsckey, value, bodyRules);
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, scanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
                            (char *) val.data);
         }
         return ret;
@@ -128,8 +128,8 @@ bool JsonValidator::jsonVal(json_t &js) {
         string value = string((char *) val.data, val.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
-        runtimeScanner.basestrRuleset(BODY, jsckey, value, bodyRules);
-        ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, runtimeScanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
+        scanner.basestrRuleset(BODY, jsckey, value, bodyRules);
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, scanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
                        (char *) val.data);
         return true;
     }
@@ -151,9 +151,9 @@ bool JsonValidator::jsonVal(json_t &js) {
         string value = string((char *) val.data, val.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
-        runtimeScanner.basestrRuleset(BODY, jsckey, value, bodyRules);
+        scanner.basestrRuleset(BODY, jsckey, value, bodyRules);
 
-        ap_log_rerror_(APLOG_MARK, APLOG_DEBUG, 0, runtimeScanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, scanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
                        (char *) val.data);
         return true;
     }
@@ -174,7 +174,7 @@ bool JsonValidator::jsonVal(json_t &js) {
         */
         string jsckey = string((char *) js.ckey.data, js.ckey.len);
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
-        runtimeScanner.basestrRuleset(BODY, jsckey, empty, bodyRules);
+        scanner.basestrRuleset(BODY, jsckey, empty, bodyRules);
 
         ret = jsonObj(js);
         jsonForward(js);
@@ -255,24 +255,24 @@ void JsonValidator::jsonParse(u_char *src, unsigned long len) {
     js.json.len = js.len = len;
 
     if (!jsonSeek(js, '{')) {
-        runtimeScanner.applyRuleMatch(runtimeScanner.parser.invalidJson, 1, BODY, "missing opening brace", empty,
+        scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "missing opening brace", empty,
                                       false);
-        runtimeScanner.block = runtimeScanner.drop = true;
+        scanner.block = scanner.drop = true;
         return;
     }
     if (!jsonObj(js)) {
-        runtimeScanner.applyRuleMatch(runtimeScanner.parser.invalidJson, 1, BODY, "malformed json object", empty,
+        scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "malformed json object", empty,
                                       false);
-        runtimeScanner.block = runtimeScanner.drop = true;
-        ap_log_rerror_(APLOG_MARK, APLOG_NOTICE, 0, runtimeScanner.r, "jsonObj returned error, apply invalid json.");
+        scanner.block = scanner.drop = true;
+        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, scanner.r, "jsonObj returned error, apply invalid json.");
         return;
     }
     /* we are now on closing bracket, check for garbage. */
     js.off++;
     jsonForward(js);
     if (js.off != js.len) {
-        runtimeScanner.applyRuleMatch(runtimeScanner.parser.invalidJson, 1, BODY, "garbage after the closing brace",
+        scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "garbage after the closing brace",
                                       empty, false);
-        runtimeScanner.block = runtimeScanner.drop = true;
+        scanner.block = scanner.drop = true;
     }
 }

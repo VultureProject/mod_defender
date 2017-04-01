@@ -29,12 +29,18 @@ static apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
 
 static apr_status_t defender_delete_ruleparser_object(void *inPtr) {
     if (inPtr) {
-        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "deleting RuleParser");
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "Cleaning Defender from a vhost");
         delete (RuleParser *) inPtr;
     }
     return OK;
 }
 
+/*
+ * This routine is called after the server finishes the configuration
+ * process.  At this point the module may review and adjust its configuration
+ * settings in relation to one another and report any problems.  On restart,
+ * this routine will be called only once, in the running server process.
+ */
 static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec *s) {
     /* Figure out if we are here for the first time */
     void *init_flag = NULL;
@@ -44,27 +50,24 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
         tmpMainRules.clear();
     } else { // second (last) load
         unsigned int mainRuleCount = RuleParser::parseMainRules(tmpMainRules);
-        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "Defender active on %s", s->server_hostname);
-        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "%d MainRules loaded", mainRuleCount);
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "Defender active on server %s: %d MainRules loaded",
+                     s->server_hostname, mainRuleCount);
 
         for (server_rec *server = s->next; server; server = server->next) {
             server_config_t *vhost_cfg = (server_config_t *) ap_get_module_config(server->module_config,
                                                                                   &defender_module);
-            vhost_cfg->parser = new RuleParser();
-            apr_pool_cleanup_register(pconf, (void *) vhost_cfg->parser, defender_delete_ruleparser_object,
-                                      apr_pool_cleanup_null);
             if (vhost_cfg->defender) {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "Defender enabled for vhost: %s",
-                             server->server_hostname);
+                vhost_cfg->parser = new RuleParser();
+                apr_pool_cleanup_register(pconf, (void *) vhost_cfg->parser, defender_delete_ruleparser_object,
+                                          apr_pool_cleanup_null);
                 vhost_cfg->parser->parseCheckRule(vhost_cfg->tmpCheckRules);
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "%lu CheckRules loaded",
-                             vhost_cfg->parser->checkRules.size());
                 unsigned int basicRuleCount = vhost_cfg->parser->parseBasicRules(vhost_cfg->tmpBasicRules);
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "%d BasicRules loaded", basicRuleCount);
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server,
+                             "Defender active on vhost %s: %lu CheckRules loaded, %d BasicRules loaded",
+                             server->server_hostname, vhost_cfg->parser->checkRules.size(), basicRuleCount);
                 vhost_cfg->parser->generateHashTables();
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "RuleParser initialized successfully");
             } else {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "Scanner disabled for vhost: %s",
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "Scanner disabled for vhost %s",
                              server->server_hostname);
             }
         }
@@ -72,33 +75,41 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
     return OK;
 }
 
-static int post_read_request(request_rec *r) {
+/*
+ * this routine gives our module another chance to examine the request
+ * headers and to take special action. This is the first phase whose
+ * hooks' configuration directives can appear inside the <Directory>
+ * and similar sections, because at this stage the URI has been mapped
+ * to the filename. For example this phase can be used to block evil
+ * clients, while little resources were wasted on these.
+ *
+ * This is a RUN_ALL hook.
+ */
+static int header_parser(request_rec *r) {
     // Get the module configuration
     server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
 
-    /* Stop if Defender not enabled */
+    // Stop if Defender not enabled
     if (!scfg->defender)
         return DECLINED;
 
-    RuntimeScanner *runtimeScanner = new RuntimeScanner(scfg, *scfg->parser);
+    RuntimeScanner *scanner = new RuntimeScanner(scfg, *scfg->parser);
 
-    /* Register a C function to delete runtimeScanner
-       at the end of the request cycle. */
-    apr_pool_cleanup_register(r->pool, (void *) runtimeScanner, defender_delete_runtimescanner_object,
+    // Register a C function to delete scanner at the end of the request cycle
+    apr_pool_cleanup_register(r->pool, (void *) scanner, defender_delete_runtimescanner_object,
                               apr_pool_cleanup_null);
 
-    /* Reserve a temporary memory block from the
-       request pool to store data between hooks. */
+    // Reserve a temporary memory block from the request pool to store data between hooks
     defender_config_t *pDefenderConfig = (defender_config_t *) apr_palloc(r->pool, sizeof(defender_config_t));
 
-    /* Remember our application pointer for future calls. */
-    pDefenderConfig->vpRuntimeScanner = runtimeScanner;
+    // Remember our application pointer for future calls
+    pDefenderConfig->vpRuntimeScanner = scanner;
 
-    /* Register our config data structure for our module for retrieval later as required */
+    // Register our config data structure for our module for retrieval later as required
     ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
 
-    /* Run our application handler. */
-    return runtimeScanner->postReadRequest(r);
+    // Run our application handler
+    return scanner->processHeaders(r);
 }
 
 static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
@@ -108,35 +119,40 @@ static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
     return text;
 }
 
-
-static int fixer_upper(request_rec *r) {
+/*
+ * This routine is called to perform any module-specific fixing of header
+ * fields, et cetera.  It is invoked just before any content-handler.
+ *
+ * This is a RUN_ALL HOOK.
+ */
+static int fixups(request_rec *r) {
     server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
-    /* Stop if Defender not enabled */
+    // Stop if Defender not enabled
     if (!scfg->defender)
         return DECLINED;
 
-    /* Stop if this is not the main request */
+    // Stop if this is not the main request
     if ((r->main != NULL) || (r->prev != NULL))
         return DECLINED;
 
-    /* Process only if POST / PUT request */
+    // Process only if POST / PUT request
     if (r->method_number != M_POST && r->method_number != M_PUT)
         return DECLINED;
 
     defender_config_t *defc = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
-    RuntimeScanner *runtimeScanner = defc->vpRuntimeScanner;
+    RuntimeScanner *scanner = defc->vpRuntimeScanner;
 
-    /* Check if supported Content-Type */
-    if (runtimeScanner->contentType == UNSUPPORTED)
+    // Check if supported Content-Type
+    if (scanner->contentType == UNSUPPORTED)
         return DECLINED;
 
-    /* Read the request body */
+    // Read the request body
     bool eos = false;
     apr_bucket_brigade *bb_in = apr_brigade_create(r->pool, r->connection->bucket_alloc);
     if (bb_in == NULL) return -1;
     do {
         int rc = ap_get_brigade(r->input_filters, bb_in, AP_MODE_SPECULATIVE, APR_BLOCK_READ,
-                                runtimeScanner->contentLength);
+                                scanner->contentLength);
         if (rc != APR_SUCCESS) {
             switch (rc) {
                 case APR_EOF:
@@ -162,10 +178,9 @@ static int fixer_upper(request_rec *r) {
             }
         }
 
-        /* Iterate on the buckets in the brigade
-         * to retrieve the body of the request */
-        if (runtimeScanner->contentLength <= scfg->requestBodyLimit)
-            runtimeScanner->rawBody.reserve(runtimeScanner->contentLength);
+        // Iterate on the buckets in the brigade to retrieve the body of the request
+        if (scanner->contentLength <= scfg->requestBodyLimit)
+            scanner->rawBody.reserve(scanner->contentLength);
 
         for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb_in);
              bucket != APR_BRIGADE_SENTINEL(bb_in); bucket = APR_BUCKET_NEXT(bucket)) {
@@ -185,20 +200,20 @@ static int fixer_upper(request_rec *r) {
                 return -1;
             }
 
-            if (runtimeScanner->rawBody.length() + nbytes > runtimeScanner->contentLength) {
+            if (scanner->rawBody.length() + nbytes > scanner->contentLength) {
                 eos = true;
                 ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Too much POST data");
                 break;
             }
 
-            runtimeScanner->rawBody += string(buf, nbytes);
+            scanner->rawBody += string(buf, nbytes);
 
-            if (runtimeScanner->rawBody.length() > scfg->requestBodyLimit) {
-                runtimeScanner->applyRuleMatch(scfg->parser->bigRequest, 1, BODY, empty, empty, false);
+            if (scanner->rawBody.length() > scfg->requestBodyLimit) {
+                scanner->applyRuleMatch(scfg->parser->bigRequest, 1, BODY, empty, empty, false);
                 return -1;
             }
 
-            if (runtimeScanner->rawBody.length() == runtimeScanner->contentLength) {
+            if (scanner->rawBody.length() == scanner->contentLength) {
                 eos = true;
                 break;
             }
@@ -206,18 +221,17 @@ static int fixer_upper(request_rec *r) {
 
         apr_brigade_cleanup(bb_in);
     } while (!eos);
-//    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "post data (%lu): %s", runtimeScanner->rawBody.length(),
-//                  runtimeScanner->rawBody.c_str());
-
-    return runtimeScanner->processBody();
+//    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "post data (%lu): %s", scanner->rawBody.length(),
+//                  scanner->rawBody.c_str());
+    return scanner->processBody();
 }
 
 /* Apache callback to register our hooks.
  */
 static void defender_register_hooks(apr_pool_t *) {
-    ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_LAST);
-    ap_hook_post_read_request(post_read_request, NULL, NULL, APR_HOOK_REALLY_FIRST);
-    ap_hook_fixups(fixer_upper, NULL, NULL, APR_HOOK_REALLY_FIRST);
+    ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
+    ap_hook_header_parser(header_parser, NULL, NULL, APR_HOOK_REALLY_FIRST - 20);
+    ap_hook_fixups(fixups, NULL, NULL, APR_HOOK_REALLY_FIRST - 20);
 }
 
 /**
