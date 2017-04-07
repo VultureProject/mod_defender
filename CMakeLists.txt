@@ -13,47 +13,30 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 file(GLOB SOURCE_FILES *.cpp libinjection/*.c)
 add_library(mod_defender SHARED ${SOURCE_FILES})
 
-set(STOP_APACHE_CMD sudo systemctl stop apache2)
-set(START_APACHE_CMD sudo systemctl start apache2)
-set(DEF_DIR /etc/moddefender)
-set(AP_MODS_AV /etc/apache2/mods-available)
-set(AP_MODS_DIR /usr/lib/apache2/modules)
+if (AUTO)
+    set(STOP_APACHE_CMD sudo systemctl stop apache2)
+    set(START_APACHE_CMD sudo systemctl start apache2)
+    set(DEF_DIR /etc/moddefender)
+    set(AP_MODS_AV /etc/apache2/mods-available)
+    set(AP_MODS_DIR /usr/lib/apache2/modules)
+    
+    if (${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
+        set(STOP_APACHE_CMD service apache24 restart)
+        set(START_APACHE_CMD service apache24 restart)
+        set(AP_MODS_DIR /usr/local/libexec/apache24/)
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
-    set(STOP_APACHE_CMD service apache24 restart)
-    set(START_APACHE_CMD service apache24 restart)
-    set(AP_MODS_DIR /usr/local/libexec/apache24/)
+        if (EXISTS "/usr/local/etc/rc.d/vulture")
+            set(STOP_APACHE_CMD "")
+            set(START_APACHE_CMD "")
+            set(AP_MODS_DIR /usr/home/vlt-sys/Engine/modules/)
+        endif ()
+    endif ()
 
-    if(EXISTS "/usr/local/etc/rc.d/vulture")
-        set(STOP_APACHE_CMD "")
-        set(START_APACHE_CMD "")
-        set(AP_MODS_DIR /usr/home/vlt-sys/Engine/modules/)
-    endif()
-endif()
-
-add_custom_command(
-        TARGET mod_defender
-        POST_BUILD
-        COMMAND ${STOP_APACHE_CMD}
-        COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so ${AP_MODS_DIR}
-        COMMAND ${START_APACHE_CMD}
-        COMMENT "Copying module then restarting Apache")
-
-install(SCRIPT "${CMAKE_SOURCE_DIR}/Install.cmake")
-install(FILES ${CMAKE_BINARY_DIR}/defender.conf DESTINATION ${AP_MODS_AV})
-install(FILES ${CMAKE_BINARY_DIR}/defender.load DESTINATION ${AP_MODS_AV})
-install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${DEF_DIR})")
-install(FILES ${CMAKE_BINARY_DIR}/core_rules.conf DESTINATION ${DEF_DIR})
-install(FILES ${CMAKE_SOURCE_DIR}/conf/moddefender.conf DESTINATION ${DEF_DIR})
-#install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so DESTINATION ${AP_MODS_DIR})
-install(CODE "execute_process(COMMAND apxs -n defender -i ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so)")
-install(CODE "execute_process(COMMAND a2enmod defender)")
-install(CODE "execute_process(COMMAND ${RELOAD_APACHE_CMD})")
-
-add_custom_target(uninstall
-        COMMAND ${STOP_APACHE_CMD}
-        COMMAND xargs rm < install_manifest.txt
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${DEF_DIR}
-        COMMAND a2dismod defender
-        COMMAND ${START_APACHE_CMD}
-        COMMENT "Uninstalling... Removing files, disabling module then restarting Apache")
+    add_custom_command(
+            TARGET mod_defender
+            POST_BUILD
+            COMMAND ${STOP_APACHE_CMD}
+            COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so ${AP_MODS_DIR}
+            COMMAND ${START_APACHE_CMD}
+            COMMENT "Copying module then restarting Apache")
+endif ()
