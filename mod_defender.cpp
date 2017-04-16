@@ -12,6 +12,8 @@
 #include "mod_defender.hpp"
 #include "RuntimeScanner.hpp"
 
+std::vector<dir_config_t *> dir_cfgs;
+
 extern module AP_MODULE_DECLARE_DATA defender_module;
 
 /* Custom definition to hold any configuration data we may need. */
@@ -29,7 +31,7 @@ static apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
 
 static apr_status_t defender_delete_ruleparser_object(void *inPtr) {
     if (inPtr) {
-        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "Cleaning Defender from a vhost");
+        ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "Unloading Defender for a loc");
         delete (RuleParser *) inPtr;
     }
     return OK;
@@ -44,34 +46,34 @@ static apr_status_t defender_delete_ruleparser_object(void *inPtr) {
 static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec *s) {
     /* Figure out if we are here for the first time */
     void *init_flag = NULL;
-    apr_pool_userdata_get(&init_flag, "moddefender-init-flag", s->process->pool);
+    apr_pool_userdata_get(&init_flag, "defender-init-flag", s->process->pool);
     if (init_flag == NULL) { // first load
-        apr_pool_userdata_set((const void *) 1, "moddefender-init-flag", apr_pool_cleanup_null, s->process->pool);
+        apr_pool_userdata_set((const void *) 1, "defender-init-flag", apr_pool_cleanup_null, s->process->pool);
         tmpMainRules.clear();
     } else { // second (last) load
         unsigned int mainRuleCount = RuleParser::parseMainRules(tmpMainRules);
         ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "Defender active on server %s: %d MainRules loaded",
                      s->server_hostname, mainRuleCount);
 
-        for (server_rec *server = s->next; server; server = server->next) {
-            server_config_t *vhost_cfg = (server_config_t *) ap_get_module_config(server->module_config,
-                                                                                  &defender_module);
-            if (vhost_cfg->defender) {
-                vhost_cfg->parser = new RuleParser();
-                apr_pool_cleanup_register(pconf, (void *) vhost_cfg->parser, defender_delete_ruleparser_object,
+        for (int i = 0; i < dir_cfgs.size(); i++) {
+            dir_config_t *dcfg = dir_cfgs[i];
+            if (dcfg->defender) {
+                dcfg->parser = new RuleParser();
+                apr_pool_cleanup_register(pconf, (void *) dcfg->parser, defender_delete_ruleparser_object,
                                           apr_pool_cleanup_null);
-                vhost_cfg->parser->parseCheckRule(vhost_cfg->tmpCheckRules);
-                unsigned int basicRuleCount = vhost_cfg->parser->parseBasicRules(vhost_cfg->tmpBasicRules);
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server,
-                             "Defender active on vhost %s: %lu CheckRules loaded, %d BasicRules loaded",
-                             server->server_hostname, vhost_cfg->parser->checkRules.size(), basicRuleCount);
-                vhost_cfg->parser->generateHashTables();
+                dcfg->parser->parseCheckRule(dcfg->tmpCheckRules);
+                unsigned int basicRuleCount = dcfg->parser->parseBasicRules(dcfg->tmpBasicRules);
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s,
+                             "Defender active on loc %s: %lu CheckRules loaded, %d BasicRules loaded",
+                             dcfg->loc_path, dcfg->parser->checkRules.size(), basicRuleCount);
+                dcfg->parser->generateHashTables();
             } else {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, server, "Scanner disabled for vhost %s",
-                             server->server_hostname);
+                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "Defender scanner disabled for loc %s",
+                             dcfg->loc_path);
             }
         }
     }
+    dir_cfgs.clear();
     return OK;
 }
 
@@ -87,13 +89,13 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
  */
 static int header_parser(request_rec *r) {
     // Get the module configuration
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
+    dir_config_t *dcfg = (dir_config_t *) ap_get_module_config(r->per_dir_config, &defender_module);
 
     // Stop if Defender not enabled
-    if (!scfg->defender)
+    if (!dcfg->defender)
         return DECLINED;
 
-    RuntimeScanner *scanner = new RuntimeScanner(scfg, *scfg->parser);
+    RuntimeScanner *scanner = new RuntimeScanner(dcfg, *dcfg->parser);
 
     // Register a C function to delete scanner at the end of the request cycle
     apr_pool_cleanup_register(r->pool, (void *) scanner, defender_delete_runtimescanner_object,
@@ -126,9 +128,9 @@ static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
  * This is a RUN_ALL HOOK.
  */
 static int fixups(request_rec *r) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(r->server->module_config, &defender_module);
+    dir_config_t *dcfg = (dir_config_t *) ap_get_module_config(r->per_dir_config, &defender_module);
     // Stop if Defender not enabled
-    if (!scfg->defender)
+    if (!dcfg->defender)
         return DECLINED;
 
     // Stop if this is not the main request
@@ -156,30 +158,30 @@ static int fixups(request_rec *r) {
         if (rc != APR_SUCCESS) {
             switch (rc) {
                 case APR_EOF:
-                    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Error reading request body: %s",
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading request body: %s",
                                   get_apr_error(r->pool, rc));
                     return -6;
                 case APR_TIMEUP:
-                    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Error reading request body: %s",
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading request body: %s",
                                   get_apr_error(r->pool, rc));
                     return -4;
                 case AP_FILTER_ERROR:
-                    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool,
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
                                   "Error reading request body: HTTP Error 413 - Request entity too large. (Most likely.)");
                     return -3;
                 case APR_EGENERAL:
-                    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool,
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
                                   "Error reading request body: Client went away.");
                     return -2;
                 default:
-                    ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Error reading request body: %s",
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading request body: %s",
                                   get_apr_error(r->pool, rc));
                     return -1;
             }
         }
 
         // Iterate on the buckets in the brigade to retrieve the body of the request
-        if (scanner->contentLength <= scfg->requestBodyLimit)
+        if (scanner->contentLength <= dcfg->requestBodyLimit)
             scanner->rawBody.reserve(scanner->contentLength);
 
         for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb_in);
@@ -195,21 +197,21 @@ static int fixups(request_rec *r) {
 
             rc = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ);
             if (rc != APR_SUCCESS) {
-                ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Failed reading input / bucket (%d): %s", rc,
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Failed reading input / bucket (%d): %s", rc,
                               get_apr_error(r->pool, rc));
                 return -1;
             }
 
             if (scanner->rawBody.length() + nbytes > scanner->contentLength) {
                 eos = true;
-                ap_log_perror(APLOG_MARK, APLOG_NOTICE, 0, r->pool, "Too much POST data");
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Too much POST data");
                 break;
             }
 
             scanner->rawBody += string(buf, nbytes);
 
-            if (scanner->rawBody.length() > scfg->requestBodyLimit) {
-                scanner->applyRuleMatch(scfg->parser->bigRequest, 1, BODY, empty, empty, false);
+            if (scanner->rawBody.length() > dcfg->requestBodyLimit) {
+                scanner->applyRuleMatch(dcfg->parser->bigRequest, 1, BODY, empty, empty, false);
                 return -1;
             }
 
@@ -237,25 +239,24 @@ static void defender_register_hooks(apr_pool_t *) {
 /**
  * This function is called when the "MatchLog" configuration directive is parsed.
  */
-static const char *set_matchlog_path(cmd_parms *cmd, void *, const char *arg) {
-    // get the module configuration (this is the structure created by create_server_config())
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+static const char *set_matchlog_path(cmd_parms *cmd, void *cfg, const char *arg) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
 
-    scfg->matchlog_path = apr_pstrdup(cmd->pool, arg);
+    dcfg->matchlog_path = apr_pstrdup(cmd->pool, arg);
 
-    if (scfg->matchlog_path[0] == '|') {
-        const char *pipe_name = scfg->matchlog_path + 1;
+    if (dcfg->matchlog_path[0] == '|') {
+        const char *pipe_name = dcfg->matchlog_path + 1;
         piped_log *pipe_log;
 
         pipe_log = ap_open_piped_log(cmd->pool, pipe_name);
         if (pipe_log == NULL)
             return apr_psprintf(cmd->pool, "mod_defender: Failed to open the match log pipe: %s", pipe_name);
-        scfg->matchlog_fd = ap_piped_log_write_fd(pipe_log);
+        dcfg->matchlog_fd = ap_piped_log_write_fd(pipe_log);
     } else {
-        const char *file_name = ap_server_root_relative(cmd->pool, scfg->matchlog_path);
+        const char *file_name = ap_server_root_relative(cmd->pool, dcfg->matchlog_path);
         apr_status_t rc;
 
-        rc = apr_file_open(&scfg->matchlog_fd, file_name,
+        rc = apr_file_open(&dcfg->matchlog_fd, file_name,
                            APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
                            APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
 
@@ -269,25 +270,24 @@ static const char *set_matchlog_path(cmd_parms *cmd, void *, const char *arg) {
 /**
  * This function is called when the "JSONMatchLog" configuration directive is parsed.
  */
-static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *, const char *arg) {
-    // get the module configuration (this is the structure created by create_server_config())
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *cfg, const char *arg) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
 
-    scfg->jsonmatchlog_path = apr_pstrdup(cmd->pool, arg);
+    dcfg->jsonmatchlog_path = apr_pstrdup(cmd->pool, arg);
 
-    if (scfg->jsonmatchlog_path[0] == '|') {
-        const char *pipe_name = scfg->jsonmatchlog_path + 1;
+    if (dcfg->jsonmatchlog_path[0] == '|') {
+        const char *pipe_name = dcfg->jsonmatchlog_path + 1;
         piped_log *pipe_log;
 
         pipe_log = ap_open_piped_log(cmd->pool, pipe_name);
         if (pipe_log == NULL)
             return apr_psprintf(cmd->pool, "mod_defender: Failed to open the json match log pipe: %s", pipe_name);
-        scfg->jsonmatchlog_fd = ap_piped_log_write_fd(pipe_log);
+        dcfg->jsonmatchlog_fd = ap_piped_log_write_fd(pipe_log);
     } else {
-        const char *file_name = ap_server_root_relative(cmd->pool, scfg->jsonmatchlog_path);
+        const char *file_name = ap_server_root_relative(cmd->pool, dcfg->jsonmatchlog_path);
         apr_status_t rc;
 
-        rc = apr_file_open(&scfg->jsonmatchlog_fd, file_name,
+        rc = apr_file_open(&dcfg->jsonmatchlog_fd, file_name,
                            APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
                            APR_UREAD | APR_UWRITE | APR_GREAD, cmd->pool);
 
@@ -298,50 +298,50 @@ static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *, const char *arg
     return NULL; // success
 }
 
-static const char *set_request_body_limit(cmd_parms *cmd, void *, const char *arg) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
+static const char *set_request_body_limit(cmd_parms *cmd, void *cfg, const char *arg) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
     unsigned long limit = strtoul(arg, NULL, 10);
     if (limit <= 0)
         return apr_psprintf(cmd->pool, "mod_defender: Invalid value for RequestBodyLimit: %s", arg);
-    scfg->requestBodyLimit = limit;
+    dcfg->requestBodyLimit = limit;
     return NULL;
 }
 
-static const char *set_libinjection_sql_flag(cmd_parms *cmd, void *, int flag) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->libinjection_sql = (bool) flag;
-    scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
+static const char *set_libinjection_sql_flag(cmd_parms *cmd, void *cfg, int flag) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->libinjection_sql = (bool) flag;
+    dcfg->libinjection = (dcfg->libinjection_sql || dcfg->libinjection_xss);
     return NULL;
 }
 
-static const char *set_libinjection_xss_flag(cmd_parms *cmd, void *, int flag) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->libinjection_xss = (bool) flag;
-    scfg->libinjection = (scfg->libinjection_sql || scfg->libinjection_xss);
+static const char *set_libinjection_xss_flag(cmd_parms *cmd, void *cfg, int flag) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->libinjection_xss = (bool) flag;
+    dcfg->libinjection = (dcfg->libinjection_sql || dcfg->libinjection_xss);
     return NULL;
 }
 
-static const char *set_defender_flag(cmd_parms *cmd, void *, int flag) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->defender = (bool) flag;
+static const char *set_defender_flag(cmd_parms *cmd, void *cfg, int flag) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->defender = (bool) flag;
     return NULL;
 }
 
-static const char *set_learning_flag(cmd_parms *cmd, void *, int flag) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->learning = (bool) flag;
+static const char *set_learning_flag(cmd_parms *cmd, void *cfg, int flag) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->learning = (bool) flag;
     return NULL;
 }
 
-static const char *set_extensive_flag(cmd_parms *cmd, void *, int flag) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->extensive = (bool) flag;
+static const char *set_extensive_flag(cmd_parms *cmd, void *cfg, int flag) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->extensive = (bool) flag;
     return NULL;
 }
 
-static const char *set_useenv_flag(cmd_parms *cmd, void *, int flag) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->useenv = (bool) flag;
+static const char *set_useenv_flag(cmd_parms *cmd, void *cfg, int flag) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->useenv = (bool) flag;
     return NULL;
 }
 
@@ -352,15 +352,15 @@ static const char *set_mainrules(cmd_parms *cmd, void *, const char *arg) {
     return NULL;
 }
 
-static const char *set_checkrules(cmd_parms *cmd, void *, const char *arg1, const char *arg2) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->tmpCheckRules.push_back(std::make_pair(apr_pstrdup(cmd->pool, arg1), apr_pstrdup(cmd->pool, arg2)));
+static const char *set_checkrules(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->tmpCheckRules.push_back(std::make_pair(apr_pstrdup(cmd->pool, arg1), apr_pstrdup(cmd->pool, arg2)));
     return NULL;
 }
 
-static const char *set_basicrules(cmd_parms *cmd, void *, const char *arg) {
-    server_config_t *scfg = (server_config_t *) ap_get_module_config(cmd->server->module_config, &defender_module);
-    scfg->tmpBasicRules.push_back(apr_pstrdup(cmd->pool, arg));
+static const char *set_basicrules(cmd_parms *cmd, void *cfg, const char *arg) {
+    dir_config_t *dcfg = (dir_config_t *) cfg;
+    dcfg->tmpBasicRules.push_back(apr_pstrdup(cmd->pool, arg));
     return NULL;
 }
 
@@ -368,48 +368,43 @@ static const char *set_basicrules(cmd_parms *cmd, void *, const char *arg) {
  * A declaration of the configuration directives that are supported by this module.
  */
 static const command_rec directives[] = {
-        {"Defender",         (cmd_func) set_defender_flag,         NULL, RSRC_CONF, FLAG,    "Defender toggle"},
-        {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF, ITERATE, "Match directive"},
-        {"CheckRule",        (cmd_func) set_checkrules,            NULL, RSRC_CONF, TAKE2,   "Score directive"},
-        {"BasicRule",        (cmd_func) set_basicrules,            NULL, RSRC_CONF, ITERATE, "Whitelist directive"},
-        {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, RSRC_CONF, TAKE1,   "Path to the match log"},
-        {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, RSRC_CONF, TAKE1,   "Path to the JSON match log"},
-        {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, RSRC_CONF, TAKE1,   "Set Request Body Limit"},
-        {"LearningMode",     (cmd_func) set_learning_flag,         NULL, RSRC_CONF, FLAG,    "Learning mode toggle"},
-        {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, RSRC_CONF, FLAG,    "Extensive log toggle"},
-        {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, RSRC_CONF, FLAG,    "Libinjection SQL toggle"},
-        {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, RSRC_CONF, FLAG,    "Libinjection XSS toggle"},
-        {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, RSRC_CONF, FLAG,    "UseEnv toggle"},
+        {"Defender",         (cmd_func) set_defender_flag,         NULL, ACCESS_CONF, FLAG,    "Defender toggle"},
+        {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF,   ITERATE, "Match directive"},
+        {"CheckRule",        (cmd_func) set_checkrules,            NULL, ACCESS_CONF, TAKE2,   "Score directive"},
+        {"BasicRule",        (cmd_func) set_basicrules,            NULL, ACCESS_CONF, ITERATE, "Whitelist directive"},
+        {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, ACCESS_CONF, TAKE1,   "Path to the match log"},
+        {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, ACCESS_CONF, TAKE1,   "Path to the JSON match log"},
+        {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, ACCESS_CONF, TAKE1,   "Set Request Body Limit"},
+        {"LearningMode",     (cmd_func) set_learning_flag,         NULL, ACCESS_CONF, FLAG,    "Learning mode toggle"},
+        {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, ACCESS_CONF, FLAG,    "Extensive log toggle"},
+        {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, ACCESS_CONF, FLAG,    "Libinjection SQL toggle"},
+        {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, ACCESS_CONF, FLAG,    "Libinjection XSS toggle"},
+        {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, ACCESS_CONF, FLAG,    "UseEnv toggle"},
         {NULL}
 };
 
 /**
  * Creates the per-server configuration records.
  */
-static void *create_server_config(apr_pool_t *p, server_rec *s) {
+static void *create_dir_config(apr_pool_t *p, char *path) {
     // allocate space for the configuration structure from the provided pool p.
-    server_config_t *scfg = (server_config_t *) apr_pcalloc(p, sizeof(server_config_t));
+    dir_config_t *dcfg = (dir_config_t *) apr_pcalloc(p, sizeof(dir_config_t));
 
-    char *error_log_abs = ap_server_root_relative(p, s->error_fname);
-    char *parent_log_dir = ap_make_dirstr_parent(p, error_log_abs);
-    char *matchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_match.log", NULL);
-    apr_file_open(&scfg->matchlog_fd, matchlog_path, APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
-                  APR_UREAD | APR_UWRITE | APR_GREAD, p);
-    char *jsonmatchlog_path = apr_pstrcat(p, parent_log_dir, "moddef_json_match.log", NULL);
-    apr_file_open(&scfg->jsonmatchlog_fd, jsonmatchlog_path, APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
-                  APR_UREAD | APR_UWRITE | APR_GREAD, p);
-    scfg->requestBodyLimit = 131072;
-    scfg->learning = 1;
-    return scfg;
+    dir_cfgs.push_back(dcfg);
+    dcfg->loc_path = apr_pstrdup(p, path);
+
+    dcfg->requestBodyLimit = 131072;
+    dcfg->learning = 1;
+    return dcfg;
 }
 
 /* Our standard module definition.
  */
 module AP_MODULE_DECLARE_DATA defender_module = {
         STANDARD20_MODULE_STUFF,
+        create_dir_config,
         NULL,
-        NULL,
-        create_server_config, // create per-server configuration structures.,
+        NULL, // create per-server configuration structures.,
         NULL, // merge per-server configurations
         directives, // configuration directive handlers,
         defender_register_hooks // request handlers

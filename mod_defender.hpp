@@ -30,6 +30,7 @@ typedef struct {
     RuleParser *parser;
     vector<pair<string, string>> tmpCheckRules;
     vector<string> tmpBasicRules;
+    char *loc_path;
     char *matchlog_path;
     char *jsonmatchlog_path;
     apr_file_t *matchlog_fd;
@@ -42,7 +43,7 @@ typedef struct {
     bool learning;
     bool extensive;
     bool useenv;
-} server_config_t;
+} dir_config_t;
 
 #endif /* MOD_DEFENDER_HPP */
 

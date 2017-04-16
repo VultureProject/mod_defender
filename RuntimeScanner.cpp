@@ -41,7 +41,7 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
         streamToFile(errlog, r->server->error_log);
     }
 
-    if (!scfg->learning)
+    if (!dcfg->learning)
         return;
 
     if (rulesMatchedCount > 0)
@@ -50,13 +50,13 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
     matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
     matchVars << "var_name" << rulesMatchedCount << "=" << name;
 
-    if (scfg->jsonmatchlog_fd) {
+    if (dcfg->jsonmatchlog_fd) {
         if (rulesMatchedCount > 0)
             jsonMatchVars << ",";
         jsonMatchVars << "{\"zone\":\"" << match_zones[zone] << "\",";
         jsonMatchVars << "\"id\":" << rule.id << ",";
         jsonMatchVars << "\"var_name\":\"" << escapeQuotes(name) << "\"";
-        if (scfg->extensive)
+        if (dcfg->extensive)
             jsonMatchVars << ",\"content\":\"" << escapeQuotes(value) << "\"";
         jsonMatchVars << "}";
     }
@@ -70,7 +70,7 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action, stringstr
     if (action == BLOCK) {
         if (r->log->level >= APLOG_WARNING) {
             errlog << "BLOCK ";
-            if (scfg->learning) errlog << "(learning)";
+            if (dcfg->learning) errlog << "(learning)";
             errlog << KNRM << endl;
         }
         block = true;
@@ -92,7 +92,7 @@ void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action, stringstr
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
                                     const string &value, MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
-        if (scfg->learning && r->log->level >= APLOG_NOTICE) {
+        if (dcfg->learning && r->log->level >= APLOG_NOTICE) {
             stringstream errlog;
             errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
             errlog << KGRN "✓ Rule #" << rule.id << " ";
@@ -171,11 +171,11 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
 
 void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
                                     const vector<http_rule_t> &rules) {
-    if (scfg->libinjection)
+    if (dcfg->libinjection)
         checkLibInjection(zone, name, value);
 
     unsigned long nbMatch = 0;
-    for (int i = 0; i < rules.size() && ((!block || scfg->learning) && !drop); i++) {
+    for (int i = 0; i < rules.size() && ((!block || dcfg->learning) && !drop); i++) {
         const http_rule_t &rule = rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 
@@ -239,7 +239,7 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
     if (value.empty() && name.empty())
         return;
 
-    if (scfg->libinjection_sql) {
+    if (dcfg->libinjection_sql) {
         struct libinjection_sqli_state state;
 
         if (!value.empty()) {
@@ -263,7 +263,7 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
         }
     }
 
-    if (scfg->libinjection_xss) {
+    if (dcfg->libinjection_xss) {
         if (!value.empty() && libinjection_xss(value.c_str(), value.size())) {
             applyRuleMatch(parser.libxssRule, 1, zone, name, value, false);
         }
@@ -589,7 +589,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
             str++;
             continue;
         }
-        if ((block && !scfg->learning) || drop)
+        if ((block && !dcfg->learning) || drop)
             return false;
         eq = strchr(str, '=');
         ev = strchr(str, '&');
@@ -783,8 +783,8 @@ int RuntimeScanner::processAction() {
     writeLearningLog();
     writeJSONLearningLog();
 
-    if (scfg->useenv) {
-        if ((block && !scfg->learning) || drop)
+    if (dcfg->useenv) {
+        if ((block && !dcfg->learning) || drop)
             apr_table_set(r->subprocess_env, "defender_action", "block");
         for (const auto &match : matchScores) {
             apr_table_set(r->subprocess_env, apr_psprintf(r->pool, "defender_%s", match.first.c_str()),
@@ -793,14 +793,14 @@ int RuntimeScanner::processAction() {
         return DECLINED;
     }
 
-    if ((block && !scfg->learning) || drop)
+    if ((block && !dcfg->learning) || drop)
         return HTTP_FORBIDDEN;
 
     return DECLINED;
 }
 
 void RuntimeScanner::writeLearningLog() {
-    if (!scfg->learning || rulesMatchedCount == 0)
+    if (!dcfg->learning || rulesMatchedCount == 0)
         return;
 
     stringstream learninglog;
@@ -830,12 +830,12 @@ void RuntimeScanner::writeLearningLog() {
     learninglog << "host: \"" << r->hostname << "\"";
 
     learninglog << endl;
-    streamToFile(learninglog, scfg->matchlog_fd);
+    streamToFile(learninglog, dcfg->matchlog_fd);
 }
 
 void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone, const string &name,
                                        const string &value, bool targetName) {
-    if (!scfg->extensive)
+    if (!dcfg->extensive)
         return;
     stringstream extensivelog;
     extensivelog << naxsiTimeFmt() << " ";
@@ -860,11 +860,11 @@ void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone,
     extensivelog << "host: \"" << r->hostname << "\"";
 
     extensivelog << endl;
-    streamToFile(extensivelog, scfg->matchlog_fd);
+    streamToFile(extensivelog, dcfg->matchlog_fd);
 }
 
 void RuntimeScanner::writeJSONLearningLog() {
-    if (!scfg->learning || rulesMatchedCount == 0)
+    if (!dcfg->learning || rulesMatchedCount == 0)
         return;
 
     stringstream jsonlog;
@@ -897,5 +897,5 @@ void RuntimeScanner::writeJSONLearningLog() {
     jsonlog << "\"host\":\"" << r->hostname << "\"";
 
     jsonlog << "}" << endl;
-    streamToFile(jsonlog, scfg->jsonmatchlog_fd);
+    streamToFile(jsonlog, dcfg->jsonmatchlog_fd);
 }
