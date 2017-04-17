@@ -54,6 +54,13 @@ APLOG_USE_MODULE(defender);
 #define DEBUG_CONF_BR(x)
 #endif
 
+//#define DEBUG_CONFIG_ACTION
+#ifdef DEBUG_CONFIG_ACTION
+#define DEBUG_CONF_ACTN(x) do { std::cerr << x; } while (0)
+#else
+#define DEBUG_CONF_ACTN(x)
+#endif
+
 //#define DEBUG_CONFIG_MATCHZONE
 #ifdef DEBUG_CONFIG_MATCHZONE
 #define DEBUG_CONF_MZ(x) do { std::cerr << x; } while (0)
@@ -105,9 +112,9 @@ typedef enum {
 } comparator_t;
 
 typedef enum {
+    ALLOW = 0,
     BLOCK,
     DROP,
-    ALLOW,
     LOG
 } rule_action_t;
 
@@ -181,6 +188,14 @@ static const char *match_zones[] = {
         NULL
 };
 
+static const char *actions[] = {
+        "ALLOW",
+        "BLOCK",
+        "DROP",
+        "LOG",
+        NULL
+};
+
 /*
 ** this struct is used to aggregate all whitelist
 ** that point to the same URI or the same VARNAME
@@ -232,6 +247,7 @@ typedef struct {
     string logMsg; // a specific log message
     /* List of scores increased on rule match. */
     vector<pair<string, unsigned long>> scores;
+    rule_action_t action;
     basic_rule_t br; // specific rule stuff
 } http_rule_t;
 
@@ -276,6 +292,7 @@ public:
     static unsigned int parseMainRules(vector<string> &rulesArray);
     void parseCheckRule(vector<pair<string, string>> &rulesArray);
     unsigned int parseBasicRules(vector<string> &rulesArray);
+    static void parseAction(string action, rule_action_t& rule_action);
     static void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     static string parseCode(std::regex_constants::error_type etype);
     void generateHashTables();

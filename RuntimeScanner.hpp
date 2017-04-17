@@ -89,7 +89,7 @@ public:
     RuntimeScanner(dir_config_t *dcfg, RuleParser &parser) : dcfg(dcfg), parser(parser) {}
     void streamToFile(const stringstream &ss, apr_file_t* fd);
     int processHeaders(request_rec *rec);
-    void applyCheckRuleAction(const rule_action_t &action, stringstream &errlog);
+    void applyRuleAction(const rule_action_t &rule_action);
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
                         const vector<http_rule_t> &rules);

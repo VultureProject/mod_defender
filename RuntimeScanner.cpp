@@ -37,9 +37,15 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
         errlog << name;
         if (!value.empty())
             errlog << ":" << value;
+        errlog << " ";
+        if (rule.action != ALLOW)
+            errlog << actions[rule.action] << " ";
+        if (rule.action == BLOCK && dcfg->learning)
+            errlog << "(learning)";
         errlog << KNRM << endl;
         streamToFile(errlog, r->server->error_log);
     }
+    applyRuleAction(rule.action);
 
     if (!dcfg->learning)
         return;
@@ -66,27 +72,13 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
     rulesMatchedCount++;
 }
 
-void RuntimeScanner::applyCheckRuleAction(const rule_action_t &action, stringstream &errlog) {
-    if (action == BLOCK) {
-        if (r->log->level >= APLOG_WARNING) {
-            errlog << "BLOCK ";
-            if (dcfg->learning) errlog << "(learning)";
-            errlog << KNRM << endl;
-        }
+void RuntimeScanner::applyRuleAction(const rule_action_t &rule_action) {
+    if (rule_action == BLOCK)
         block = true;
-    } else if (action == DROP) {
-        if (r->log->level >= APLOG_WARNING)
-            errlog << "DROP" << KNRM << endl;
+    else if (rule_action == DROP)
         drop = true;
-    } else if (action == ALLOW) {
-        if (r->log->level >= APLOG_WARNING)
-            errlog << "ALLOW" << KNRM << endl;
-        allow = true;
-    } else if (action == LOG) {
-        if (r->log->level >= APLOG_WARNING)
-            errlog << "LOG" << KNRM << endl;
+    else if (rule_action == LOG)
         log = true;
-    }
 }
 
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
@@ -130,11 +122,18 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
             matched = (score <= checkRule.limit);
         else if (checkRule.comparator < INF)
             matched = (score < checkRule.limit);
-        if (matched && r->log->level >= APLOG_WARNING)
-            applyCheckRuleAction(checkRule.action, errlog);
-        else if (r->log->level >= APLOG_WARNING)
+
+        if (matched) {
+            applyRuleAction(checkRule.action);
+            if (r->log->level >= APLOG_WARNING && checkRule.action != ALLOW) {
+                errlog << actions[checkRule.action] << " "
+                       << (dcfg->learning && checkRule.action == BLOCK ? "(learning)" : "");
+            }
+        }
+        if (r->log->level >= APLOG_WARNING)
             errlog << KNRM << endl;
     }
+
     if (r->log->level >= APLOG_WARNING)
         streamToFile(errlog, r->server->error_log);
 }

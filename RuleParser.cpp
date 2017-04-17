@@ -95,10 +95,14 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
 
         string score = rulesArray[i + 3].substr(2);
         vector<string> scores = split(score, ',');
+        rule.action = ALLOW;
         for (const string &sc : scores) {
-            pair<string, string> scorepair = splitAtFirst(sc, ":");
-            rule.scores.emplace_back(scorepair.first, std::stoul(scorepair.second));
-            DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
+            if (sc[0] == '$') { // $SCORE
+                pair<string, string> scorepair = splitAtFirst(sc, ":");
+                rule.scores.emplace_back(scorepair.first, std::stoul(scorepair.second));
+                DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
+            } else // action
+                parseAction(sc, rule.action);
         }
 
         rule.id = std::stoul(rulesArray[i + 4].substr(3));
@@ -144,7 +148,6 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
 }
 
 void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
-    // prev args: apr_pool_t *pool, string equation, string action
     for (const pair<string, string> &rule : rulesArray) {
         const string &equation = rule.first;
         const string &action = rule.second;
@@ -180,19 +183,8 @@ void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
             continue;
         }
 
-        if (action == "BLOCK") {
-            chkrule.action = BLOCK;
-            DEBUG_CONF_CR("BLOCK ");
-        } else if (action == "DROP") {
-            chkrule.action = DROP;
-            DEBUG_CONF_CR("DROP ");
-        } else if (action == "ALLOW") {
-            chkrule.action = ALLOW;
-            DEBUG_CONF_CR("ALLOW ");
-        } else if (action == "LOG") {
-            chkrule.action = LOG;
-            DEBUG_CONF_CR("LOG ");
-        }
+        chkrule.action = ALLOW;
+        parseAction(action, chkrule.action);
 
         checkRules[tag] = chkrule;
 
@@ -232,6 +224,22 @@ unsigned int RuleParser::parseBasicRules(vector<string> &rulesArray) {
     }
     rulesArray.clear();
     return ruleCount;
+}
+
+void RuleParser::parseAction(string action, rule_action_t& rule_action) {
+    if (action == "BLOCK") {
+        rule_action = BLOCK;
+        DEBUG_CONF_ACTN("BLOCK ");
+    } else if (action == "DROP") {
+        rule_action = DROP;
+        DEBUG_CONF_ACTN("DROP ");
+    } else if (action == "ALLOW") {
+        rule_action = ALLOW;
+        DEBUG_CONF_ACTN("ALLOW ");
+    } else if (action == "LOG") {
+        rule_action = LOG;
+        DEBUG_CONF_ACTN("LOG ");
+    }
 }
 
 void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
