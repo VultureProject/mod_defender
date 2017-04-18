@@ -148,6 +148,13 @@ static int fixups(request_rec *r) {
     if (scanner->contentType == UNSUPPORTED)
         return DECLINED;
 
+    if (scanner->contentLength <= 0)
+        return -1;
+
+    // Iterate on the buckets in the brigade to retrieve the body of the request
+    if (scanner->contentLength <= dcfg->requestBodyLimit)
+        scanner->rawBody.reserve(scanner->contentLength);
+
     // Read the request body
     bool eos = false;
     apr_bucket_brigade *bb_in = apr_brigade_create(r->pool, r->connection->bucket_alloc);
@@ -179,10 +186,6 @@ static int fixups(request_rec *r) {
                     return -1;
             }
         }
-
-        // Iterate on the buckets in the brigade to retrieve the body of the request
-        if (scanner->contentLength <= dcfg->requestBodyLimit)
-            scanner->rawBody.reserve(scanner->contentLength);
 
         for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb_in);
              bucket != APR_BRIGADE_SENTINEL(bb_in); bucket = APR_BUCKET_NEXT(bucket)) {
