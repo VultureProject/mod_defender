@@ -95,7 +95,6 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
 
         string score = rulesArray[i + 3].substr(2);
         vector<string> scores = split(score, ',');
-        rule.action = ALLOW;
         for (const string &sc : scores) {
             if (sc[0] == '$') { // $SCORE
                 pair<string, string> scorepair = splitAtFirst(sc, ":");
@@ -183,7 +182,6 @@ void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
             continue;
         }
 
-        chkrule.action = ALLOW;
         parseAction(action, chkrule.action);
 
         checkRules[tag] = chkrule;

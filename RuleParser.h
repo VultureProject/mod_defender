@@ -121,7 +121,7 @@ typedef enum {
 typedef struct {
     comparator_t comparator;
     unsigned long limit;
-    rule_action_t action;
+    rule_action_t action = ALLOW;
 } check_rule_t;
 
 /*
@@ -247,7 +247,7 @@ typedef struct {
     string logMsg; // a specific log message
     /* List of scores increased on rule match. */
     vector<pair<string, unsigned long>> scores;
-    rule_action_t action;
+    rule_action_t action = ALLOW;
     basic_rule_t br; // specific rule stuff
 } http_rule_t;
 
