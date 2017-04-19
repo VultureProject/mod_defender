@@ -235,8 +235,9 @@ static int fixups(request_rec *r) {
  */
 static void defender_register_hooks(apr_pool_t *) {
     ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
-    ap_hook_header_parser(header_parser, NULL, NULL, APR_HOOK_REALLY_FIRST - 20);
-    ap_hook_fixups(fixups, NULL, NULL, APR_HOOK_REALLY_FIRST - 20);
+    static const char *const aszSucc[] = {"mod_security2.c", NULL};
+    ap_hook_header_parser(header_parser, NULL, aszSucc, APR_HOOK_REALLY_FIRST - 20);
+    ap_hook_fixups(fixups, NULL, aszSucc, APR_HOOK_REALLY_FIRST - 20);
 }
 
 /**
