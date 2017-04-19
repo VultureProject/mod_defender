@@ -143,7 +143,7 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
         return false;
     DEBUG_RUNTIME_PR("[" << str);
     nbMatch = 0;
-    if (!rl.br.str.empty()) {
+    if (rl.br.match_type == STR) {
         DEBUG_RUNTIME_PR(" ? " << rl.br.str << "] ");
 //        nbMatch = countSubstring(str, rl.br.str);
 //        nbMatch = countSubstring(str.c_str(), str.size(), rl.br.str.c_str(), rl.br.str.size());
@@ -155,7 +155,7 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
         } else {
             return rl.br.negative;
         }
-    } else {
+    } else if (rl.br.match_type == RX) {
         DEBUG_RUNTIME_PR(" ? <regex>] ");
         nbMatch = (unsigned long) distance(sregex_iterator(str.begin(), str.end(), rl.br.rx), sregex_iterator());
         if (nbMatch > 0) {
@@ -164,6 +164,16 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
         } else {
             return rl.br.negative;
         }
+    } else if (rl.br.match_type == LIBINJ_SQL) {
+        DEBUG_RUNTIME_PR(" ? LIBINJ_SQL] ");
+        struct libinjection_sqli_state state;
+        libinjection_sqli_init(&state, str.c_str(), str.size(), FLAG_NONE);
+        if (libinjection_is_sqli(&state))
+            return true;
+    } else if (rl.br.match_type == LIBINJ_XSS) {
+        DEBUG_RUNTIME_PR(" ? LIBINJ_XSS] ");
+        if (libinjection_xss(str.c_str(), str.size()))
+            return true;
     }
     return false;
 }
@@ -245,9 +255,8 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
             libinjection_sqli_init(&state, value.c_str(), value.size(), FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
-                http_rule_t &sqliRule = parser.libsqliRule;
-                sqliRule.logMsg = state.fingerprint;
-                applyRuleMatch(sqliRule, 1, zone, name, value, false);
+                parser.libsqliRule.logMsg = state.fingerprint;
+                applyCheckRule(parser.libsqliRule, 1, name, value, zone, false);
             }
         }
 
@@ -255,20 +264,19 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
             libinjection_sqli_init(&state, name.c_str(), name.size(), FLAG_NONE);
 
             if (libinjection_is_sqli(&state)) {
-                http_rule_t &sqliRule = parser.libsqliRule;
-                sqliRule.logMsg = state.fingerprint;
-                applyRuleMatch(sqliRule, 1, zone, name, value, true);
+                parser.libsqliRule.logMsg = state.fingerprint;
+                applyCheckRule(parser.libsqliRule, 1, name, value, zone, true);
             }
         }
     }
 
     if (dcfg->libinjection_xss) {
         if (!value.empty() && libinjection_xss(value.c_str(), value.size())) {
-            applyRuleMatch(parser.libxssRule, 1, zone, name, value, false);
+            applyCheckRule(parser.libxssRule, 1, name, value, zone, false);
         }
 
         if (!name.empty() && libinjection_xss(name.c_str(), name.size())) {
-            applyRuleMatch(parser.libxssRule, 1, zone, name, value, true);
+            applyCheckRule(parser.libxssRule, 1, name, value, zone, true);
         }
     }
 }
@@ -811,7 +819,7 @@ void RuntimeScanner::writeLearningLog() {
     learninglog << "server=" << r->hostname << "&";
     learninglog << "uri=" << r->parsed_uri.path << "&";
 
-    learninglog << "block=" << block << "&";
+    learninglog << "block=" << (block || drop) << "&";
     int i = 0;
     for (const auto &match : matchScores) {
         learninglog << "cscore" << i << "=" << match.first << "&";
@@ -876,7 +884,7 @@ void RuntimeScanner::writeJSONLearningLog() {
     jsonlog << "\"hostname\":\"" << r->hostname << "\",";
     jsonlog << "\"uri\":\"" << r->parsed_uri.path << "\",";
 
-    jsonlog << "\"block\":" << block << ",";
+    jsonlog << "\"block\":" << (block || drop) << ",";
     jsonlog << "\"scores\":{";
     int i = 0;
     for (const auto &match : matchScores) {

@@ -46,10 +46,11 @@ RuleParser::RuleParser() {
     emptyPostBody.logMsg = "Empty post body";
 
     libsqliRule.id = 17;
-    libsqliRule.scores.emplace_back("$SQL", 8);
+    libsqliRule.scores.emplace_back("$LIBINJECTION_SQL", 8);
 
     libxssRule.id = 18;
-    libxssRule.scores.emplace_back("$XSS", 8);
+    libxssRule.logMsg = "Libinjection XSS";
+    libxssRule.scores.emplace_back("$LIBINJECTION_XSS", 8);
 }
 
 unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
@@ -80,11 +81,21 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
                              parseCode(e.code()).c_str());
                 error = true;
             }
+            rule.br.match_type = RX;
             DEBUG_CONF_MR("rx " << matchPattern.second << " ");
         }
-        if (matchPattern.first == "str") {
+        else if (matchPattern.first == "str") {
             rule.br.str = matchPattern.second;
+            rule.br.match_type = STR;
             DEBUG_CONF_MR("str " << rule.br.str << " ");
+        }
+        else if (rulesArray[i] == "d:libinj_sql") {
+            rule.br.match_type = LIBINJ_SQL;
+            DEBUG_CONF_MR("d libinj_sql ");
+        }
+        else if (rulesArray[i] == "d:libinj_xss") {
+            rule.br.match_type = LIBINJ_XSS;
+            DEBUG_CONF_MR("d libinj_xss ");
         }
 
         rule.logMsg = rulesArray[i + 1].substr(4);

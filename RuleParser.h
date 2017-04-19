@@ -161,6 +161,21 @@ typedef struct {
     string target;
 } whitelist_location_t;
 
+/*
+** basic rule can have 4 (so far) kind of matching mechanisms
+** RX
+** STR
+** LIBINJ_XSS
+** LIBINJ_SQL
+*/
+enum DETECT_MECHANISM  {
+    NONE = -1,
+    RX,
+    STR,
+    LIBINJ_XSS,
+    LIBINJ_SQL
+};
+
 enum MATCH_TYPE {
     URI_ONLY = 0,
     NAME_ONLY,
@@ -214,6 +229,11 @@ typedef struct {
     bool active = false; // to check if there is a basic rule or not
     regex rx;
     string str;
+    /*
+    ** basic rule can have 4 (so far) kind of matching mechanisms :
+    ** RX, STR, LIBINJ_XSS, LIBINJ_SQL
+    */
+    enum DETECT_MECHANISM match_type;
     bool rxMz = false;
     MATCH_ZONE zone;
     bool bodyMz = false;
