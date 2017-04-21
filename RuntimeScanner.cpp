@@ -84,7 +84,7 @@ void RuntimeScanner::applyRuleAction(const rule_action_t &rule_action) {
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
                                     const string &value, MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
-        if (dcfg->learning && r->log->level >= APLOG_NOTICE) {
+        if (r->log->level >= APLOG_NOTICE) {
             stringstream errlog;
             errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
             errlog << KGRN "✓ Rule #" << rule.id << " ";
