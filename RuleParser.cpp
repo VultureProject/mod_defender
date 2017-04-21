@@ -73,6 +73,7 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
             i++;
         }
         pair<string, string> matchPattern = splitAtFirst(rulesArray[i], ":");
+        std::transform(matchPattern.second.begin(), matchPattern.second.end(), matchPattern.second.begin(), tolower);
         if (matchPattern.first == "rx") {
             try {
                 rule.br.rx = regex(matchPattern.second, std::regex::optimize);
