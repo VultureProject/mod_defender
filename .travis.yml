@@ -1,0 +1,73 @@
+language: cpp
+os: linux
+dist: trusty
+sudo: required
+compiler: gcc
+
+addons:
+  apt:
+    packages:
+      - apache2
+      - apache2-dev
+      - g++-5
+      - gcc-5
+    sources:
+      - ubuntu-toolchain-r-test
+
+before_install:
+
+install:
+  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 90
+
+before_script:
+  - sudo mkdir /etc/defender/
+  - >
+    sudo wget -O /etc/defender/core.rules
+    https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
+  - >
+    printf
+    "LoadModule defender_module /usr/lib/apache2/modules/mod_defender.so
+      <IfModule defender_module>
+      Include /etc/defender/core.rules
+      </IfModule>" | sudo tee /etc/apache2/mods-available/defender.load
+
+  - sudo a2enmod defender
+  - sudo service apache2 stop
+  - >
+    printf
+    "<VirtualHost *:80>
+      LogLevel notice
+      ErrorLog \${APACHE_LOG_DIR}/error.log
+      AllowEncodedSlashes On
+      <Location />
+        <IfModule defender_module>
+        Defender On
+        MatchLog \${APACHE_LOG_DIR}/moddef_match.log
+        JSONMatchLog \${APACHE_LOG_DIR}/moddef_json_match.log
+        RequestBodyLimit 131072
+        LearningMode Off
+        ExtensiveLog Off
+        LibinjectionSQL Off
+        LibinjectionXSS Off
+        CheckRule \"\$SQL >= 8\" BLOCK
+        CheckRule \"\$RFI >= 8\" BLOCK
+        CheckRule \"\$TRAVERSAL >= 4\" BLOCK
+        CheckRule \"\$EVADE >= 4\" BLOCK
+        CheckRule \"\$XSS >= 8\" BLOCK
+        CheckRule \"\$UPLOAD >= 8\" BLOCK
+        </IfModule>
+      </Location>
+    </VirtualHost>" | sudo tee /etc/apache2/sites-available/000-default.conf
+
+
+script:
+  - cmake .
+  - make
+  - sudo cp lib/mod_defender.so /usr/lib/apache2/modules/
+  - sudo service apache2 start
+  - bash unit_test.sh localhost
+
+after_script:
+  - sudo cat /var/log/apache2/error.log
+  - sudo cat /var/log/apache2/moddef_match.log
+  - sudo cat /var/log/apache2/moddef_json_match.log

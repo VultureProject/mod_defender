@@ -16,7 +16,6 @@ add_library(mod_defender SHARED ${SOURCE_FILES})
 if (AUTO)
     set(STOP_APACHE_CMD sudo systemctl stop apache2)
     set(START_APACHE_CMD sudo systemctl start apache2)
-    set(DEF_DIR /etc/moddefender)
     set(AP_MODS_AV /etc/apache2/mods-available)
     set(AP_MODS_DIR /usr/lib/apache2/modules)
     

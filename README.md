@@ -1,3 +1,5 @@
+[![travis-ci](https://travis-ci.org/Annihil/mod_defender.svg?branch=master)](https://travis-ci.org/Annihil/mod_defender)
+
 # Mod Defender
 Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelist policy  
 It uses the same format as NAXSI configs and thus is fully compatible with NXAPI  
@@ -75,6 +77,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             CheckRule "$TRAVERSAL >= 4" BLOCK
             CheckRule "$EVADE >= 4" BLOCK
             CheckRule "$XSS >= 8" BLOCK
+            CheckRule "$UPLOAD >= 8" BLOCK
 
             # Whitelists (BasicRule)
             Include /etc/defender/my_whitelist.rules
@@ -156,6 +159,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             CheckRule "$TRAVERSAL >= 4" BLOCK
             CheckRule "$EVADE >= 4" BLOCK
             CheckRule "$XSS >= 8" BLOCK
+            CheckRule "$UPLOAD >= 8" BLOCK
 
             # Whitelists (BasicRule)
             Include /etc/defender/my_whitelist.rules
