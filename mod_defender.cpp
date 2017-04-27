@@ -144,12 +144,8 @@ static int fixups(request_rec *r) {
     defender_config_t *defc = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
     RuntimeScanner *scanner = defc->vpRuntimeScanner;
 
-    // Check if supported Content-Type
-    if (scanner->contentType == UNSUPPORTED)
-        return DECLINED;
-
-    if (scanner->contentLength <= 0)
-        return -1;
+    if (scanner->contentLength <= 0 || scanner->contentType == UNSUPPORTED)
+        return scanner->processBody();
 
     // Iterate on the buckets in the brigade to retrieve the body of the request
     if (scanner->contentLength <= dcfg->requestBodyLimit)

@@ -56,10 +56,10 @@ using std::transform;
 const std::string empty = string();
 
 enum CONTENT_TYPE {
-    URL_ENC = 0, // application/x-www-form-urlencoded
+    UNSUPPORTED = 0,
+    URL_ENC, // application/x-www-form-urlencoded
     MULTIPART, // multipart/form-data
     APP_JSON, // application/json
-    UNSUPPORTED
 };
 
 class RuntimeScanner {
@@ -74,7 +74,6 @@ private:
     string uri;
     unordered_map<string, int> matchScores;
     string rawContentType;
-    bool contentTypeFound = false;
 
     bool block = false;
     bool drop = false;

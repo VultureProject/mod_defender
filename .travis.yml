@@ -42,8 +42,8 @@ before_script:
       <Location />
         <IfModule defender_module>
         Defender On
-        MatchLog \${APACHE_LOG_DIR}/moddef_match.log
-        JSONMatchLog \${APACHE_LOG_DIR}/moddef_json_match.log
+        MatchLog \${APACHE_LOG_DIR}/defender_match.log
+        JSONMatchLog \${APACHE_LOG_DIR}/defender_json_match.log
         RequestBodyLimit 131072
         LearningMode Off
         ExtensiveLog Off
@@ -63,11 +63,11 @@ before_script:
 script:
   - cmake .
   - make
-  - sudo cp lib/mod_defender.so /usr/lib/apache2/modules/
+  - sudo cp mod_defender.so /usr/lib/apache2/modules/
   - sudo service apache2 start
   - bash unit_test.sh localhost
 
 after_script:
   - sudo cat /var/log/apache2/error.log
-  - sudo cat /var/log/apache2/moddef_match.log
-  - sudo cat /var/log/apache2/moddef_json_match.log
+  - sudo cat /var/log/apache2/defender_match.log
+  - sudo cat /var/log/apache2/defender_json_match.log

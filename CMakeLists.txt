@@ -1,9 +1,7 @@
 cmake_minimum_required(VERSION 3.2)
 project(mod_defender)
 set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib")
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
-set(CMAKE_SHARED_LIBRARY_OUTPUT_NAME "")
 
 include_directories(/usr/include/apache2 /usr/include/apr-1.0 /usr/include/apr-1 /usr/include /usr/local/include/apr-1/
         /usr/local/include/ /usr/local/include/apache24 /usr/home/vlt-sys/Engine/include/)
@@ -35,7 +33,7 @@ if (AUTO)
             TARGET mod_defender
             POST_BUILD
             COMMAND ${STOP_APACHE_CMD}
-            COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/lib/mod_defender.so ${AP_MODS_DIR}
+            COMMAND cp $<TARGET_FILE:mod_defender> ${AP_MODS_DIR}
             COMMAND ${START_APACHE_CMD}
             COMMENT "Copying module then restarting Apache")
 endif ()

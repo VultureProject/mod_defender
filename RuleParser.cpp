@@ -23,34 +23,44 @@ RuleParser::RuleParser() {
     /* Internal rules */
     bigRequest.id = 2;
     bigRequest.logMsg = "Big request";
+    bigRequest.action = BLOCK;
 
     uncommonHexEncoding.id = 10;
     uncommonHexEncoding.logMsg = "Uncommon hex encoding";
+    uncommonHexEncoding.action = BLOCK;
 
     uncommonContentType.id = 11;
     uncommonContentType.logMsg = "Uncommon content type";
+    uncommonContentType.action = BLOCK;
 
     uncommonUrl.id = 12;
     uncommonUrl.logMsg = "Uncommon url";
+    uncommonUrl.action = BLOCK;
 
     uncommonPostFormat.id = 13;
     uncommonPostFormat.logMsg = "Uncommon post format";
+    uncommonPostFormat.action = BLOCK;
 
     uncommonPostBoundary.id = 14;
     uncommonPostBoundary.logMsg = "Uncommon post boundary";
+    uncommonPostBoundary.action = BLOCK;
 
     invalidJson.id = 15;
     invalidJson.logMsg = "Invalid json";
+    invalidJson.action = BLOCK;
 
     emptyPostBody.id = 16;
     emptyPostBody.logMsg = "Empty post body";
+    invalidJson.action = BLOCK;
 
     libsqliRule.id = 17;
     libsqliRule.scores.emplace_back("$LIBINJECTION_SQL", 8);
+    invalidJson.action = BLOCK;
 
     libxssRule.id = 18;
     libxssRule.logMsg = "Libinjection XSS";
     libxssRule.scores.emplace_back("$LIBINJECTION_XSS", 8);
+    libxssRule.action = BLOCK;
 }
 
 unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {

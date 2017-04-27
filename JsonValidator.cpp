@@ -257,13 +257,11 @@ void JsonValidator::jsonParse(u_char *src, unsigned long len) {
     if (!jsonSeek(js, '{')) {
         scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "missing opening brace", empty,
                                       false);
-        scanner.block = scanner.drop = true;
         return;
     }
     if (!jsonObj(js)) {
         scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "malformed json object", empty,
                                       false);
-        scanner.block = scanner.drop = true;
         ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, scanner.r, "jsonObj returned error, apply invalid json.");
         return;
     }
@@ -273,6 +271,5 @@ void JsonValidator::jsonParse(u_char *src, unsigned long len) {
     if (js.off != js.len) {
         scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "garbage after the closing brace",
                                       empty, false);
-        scanner.block = scanner.drop = true;
     }
 }

@@ -32,9 +32,9 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 	make -j 4
 	```
 
-1. Use Apache Extension Tool to install the module
+1. Install the module
     ```sh
-    sudo cp lib/mod_defender.so /usr/lib/apache2/modules/
+    sudo cp mod_defender.so /usr/lib/apache2/modules/
     ```
 
 1. Create its module load file
@@ -58,9 +58,9 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             # Defender toggle
             Defender On
             # Match log path
-            MatchLog ${APACHE_LOG_DIR}/moddef_match.log
+            MatchLog ${APACHE_LOG_DIR}/defender_match.log
             # JSON Match log path
-            JSONMatchLog ${APACHE_LOG_DIR}/moddef_json_match.log
+            JSONMatchLog ${APACHE_LOG_DIR}/defender_json_match.log
             # Request body limit
             RequestBodyLimit 131072
             # Learning mode toggle
@@ -119,6 +119,11 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 	make -j 4
 	```
 
+1. Install the module
+    ```sh
+    cp mod_defender.so /usr/local/libexec/apache24/
+    ```
+
 1. Create its module load file
    	```sh
     cat << EOF | tee /usr/local/etc/apache24/modules.d/250_mod_defender.rules > /dev/null
@@ -140,9 +145,9 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             # Defender toggle
             Defender On
             # Match log path
-            MatchLog /var/log/moddef_match.log
+            MatchLog /var/log/defender_match.log
             # JSON Match log path
-            JSONMatchLog /var/log/moddef_json_match.log
+            JSONMatchLog /var/log/defender_json_match.log
             # Request body limit
             RequestBodyLimit 131072
             # Learning mode toggle

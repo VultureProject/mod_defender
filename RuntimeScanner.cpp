@@ -25,9 +25,9 @@ void RuntimeScanner::streamToFile(const stringstream &ss, apr_file_t *fd) {
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
-    if (r->log->level >= APLOG_WARNING) {
+    if (r->log->level >= APLOG_NOTICE) {
         stringstream errlog;
-        errlog << formatLog(APLOG_WARNING, r->useragent_ip);
+        errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
         errlog << KRED "⚠ Rule #" << rule.id << " ";
         errlog << "(" << rule.logMsg << ") ";
         errlog << "matched " << nbMatch << " times ";
@@ -109,8 +109,8 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
         int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
 
-        if (r->log->level >= APLOG_WARNING) {
-            errlog << formatLog(APLOG_WARNING, r->useragent_ip);
+        if (r->log->level >= APLOG_NOTICE) {
+            errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
             errlog << KYEL "→ Score " << tagScore.first << " = " << score << " ";
         }
         check_rule_t &checkRule = parser.checkRules[tagScore.first];
@@ -125,16 +125,16 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
 
         if (matched) {
             applyRuleAction(checkRule.action);
-            if (r->log->level >= APLOG_WARNING && checkRule.action != ALLOW) {
+            if (r->log->level >= APLOG_NOTICE && checkRule.action != ALLOW) {
                 errlog << actions[checkRule.action] << " "
                        << (dcfg->learning && checkRule.action == BLOCK ? "(learning)" : "");
             }
         }
-        if (r->log->level >= APLOG_WARNING)
+        if (r->log->level >= APLOG_NOTICE)
             errlog << KNRM << endl;
     }
 
-    if (r->log->level >= APLOG_WARNING)
+    if (r->log->level >= APLOG_NOTICE)
         streamToFile(errlog, r->server->error_log);
 }
 
@@ -392,7 +392,6 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
                           boundary_len);
         applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", empty, false);
-        block = drop = true;
         return;
     }
 
@@ -408,7 +407,6 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
                 /* bad closing boundary ?*/
                 applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad closing boundary",
                                (const char *) boundary, false);
-                block = drop = true;
                 return;
             } else
                 break;
@@ -425,7 +423,6 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             /* bad boundary */
             applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data bad boundary",
                            (const char *) boundary, false);
-            block = drop = true;
             return;
         }
         idx += boundary_len + 4;
@@ -441,27 +438,23 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         if (strncasecmp((const char *) src + idx, "content-disposition: form-data;", 31)) {
             applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : unknown content-disposition",
                            (const char *) src + idx, false);
-            block = drop = true;
             return;
         }
         idx += 31;
         line_end = (u_char *) strchr((const char *) src + idx, '\n');
         if (!line_end) {
             applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed boundary line", empty, false);
-            block = drop = true;
             return;
         }
         /* Parse content-disposition, extract name / filename */
         varn_start = varn_end = filen_start = filen_end = NULL;
         if (!contentDispositionParser(src + idx, line_end, &varn_start, &varn_end, &filen_start, &filen_end)) {
             applyRuleMatch(parser.uncommonPostFormat, 1, BODY, empty, empty, false);
-            block = drop = true;
             return;
         }
         /* var name is mandatory */
         if (!varn_start || !varn_end || varn_end <= varn_start) {
             applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : no 'name' in POST var", empty, false);
-            block = drop = true;
             return;
         }
         varn_len = varn_end - varn_start;
@@ -472,7 +465,6 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             if (!line_end) {
                 applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed filename (no content-type ?)",
                                empty, false);
-                block = drop = true;
                 return;
             }
         }
@@ -484,7 +476,6 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
         if (src[idx] != '\r' || src[idx + 1] != '\n') {
             applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line", empty,
                            false);
-            block = drop = true;
             return;
         }
         idx += 2;
@@ -504,7 +495,6 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             if (!end) {
                 applyRuleMatch(parser.uncommonPostFormat, 1, BODY, "POST data : malformed content-disposition line",
                                empty, false);
-                block = drop = true;
                 return;
             }
             if (!strncmp((const char *) end + 4, (const char *) boundary, boundary_len))
@@ -526,12 +516,10 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             nullbytes = naxsi_unescape(&final_var);
             if (nullbytes > 0) {
                 applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, true);
-                block = drop = true;
             }
             nullbytes = naxsi_unescape(&final_data);
             if (nullbytes > 0) {
                 applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, false);
-                block = drop = true;
             }
 
             /* here we got val name + val content !*/
@@ -552,12 +540,10 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             nullbytes = naxsi_unescape(&final_var);
             if (nullbytes > 0) {
                 applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, true);
-                block = drop = true;
             }
             nullbytes = naxsi_unescape(&final_data);
             if (nullbytes > 0) {
                 applyRuleMatch(parser.uncommonHexEncoding, 1, BODY, empty, empty, false);
-                block = drop = true;
             }
 
             /* here we got val name + val content !*/
@@ -712,7 +698,6 @@ int RuntimeScanner::processHeaders(request_rec *rec) {
             } else if (caseEqual(val, "application/json")) {
                 contentType = APP_JSON;
             }
-            contentTypeFound = true;
         }
         transform(val.begin(), val.end(), val.begin(), tolower);
         basestrRuleset(HEADERS, key, val, headerRules);
@@ -746,20 +731,21 @@ int RuntimeScanner::processBody() {
         return DECLINED;
     }
 
-    if (!contentTypeFound) {
-        applyRuleMatch(parser.uncommonContentType, 1, HEADERS, empty, empty, false);
-        return HTTP_FORBIDDEN;
+    /* Stop if BODY is empty */
+    if (rawBody.empty()) {
+        applyRuleMatch(parser.emptyPostBody, 1, BODY, empty, empty, false);
+        return processAction();
     }
 
-    if (rawBody.empty()) {
-        return DECLINED;
+    if (contentType == UNSUPPORTED) {
+        applyRuleMatch(parser.uncommonContentType, 1, HEADERS, empty, empty, false);
+        return processAction();
     }
 
     /* If Content-Type: application/x-www-form-urlencoded */
     if (contentType == URL_ENC) {
         if (splitUrlEncodedRuleset(&rawBody[0], bodyRules, BODY)) {
             applyRuleMatch(parser.uncommonUrl, 1, BODY, empty, empty, false);
-            block = drop = true;
         }
     }
         /* If Content-Type: multipart/form-data */
@@ -806,6 +792,9 @@ int RuntimeScanner::processAction() {
     return DECLINED;
 }
 
+/*
+ * YYYY/MM/DD HH:MM:SS [LEVEL] PID#TID: *CID MESSAGE
+ */
 void RuntimeScanner::writeLearningLog() {
     if (!dcfg->learning || rulesMatchedCount == 0)
         return;
@@ -813,11 +802,20 @@ void RuntimeScanner::writeLearningLog() {
     stringstream learninglog;
     learninglog << naxsiTimeFmt() << " ";
     learninglog << "[error] ";
+    learninglog << getpid() << "#";
+    learninglog << apr_os_thread_current() << ": ";
+    learninglog << "*" << r->connection->id << " ";
+
     learninglog << "NAXSI_FMT: ";
 
     learninglog << "ip=" << r->useragent_ip << "&";
     learninglog << "server=" << r->hostname << "&";
     learninglog << "uri=" << r->parsed_uri.path << "&";
+
+    learninglog << "learning=" << dcfg->learning << "&";
+    ap_version_t vers;
+    ap_get_server_revision(&vers);
+    learninglog << "vers=" << vers.major << "." << vers.minor << "." << vers.patch << "&";
 
     learninglog << "block=" << (block || drop) << "&";
     int i = 0;
@@ -847,6 +845,10 @@ void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone,
     stringstream extensivelog;
     extensivelog << naxsiTimeFmt() << " ";
     extensivelog << "[error] ";
+    extensivelog << getpid() << "#";
+    extensivelog << apr_os_thread_current() << ": ";
+    extensivelog << "*" << r->connection->id << " ";
+
     extensivelog << "NAXSI_EXLOG: ";
 
     extensivelog << "ip=" << r->useragent_ip << "&";
