@@ -1,6 +1,6 @@
 [![travis-ci](https://travis-ci.org/Annihil/mod_defender.svg?branch=master)](https://travis-ci.org/Annihil/mod_defender)
 
-# Mod Defender
+![ModDefender logo](https://i.imgur.com/OWcjRTM.png)  
 Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelist policy  
 It uses the same format as NAXSI configs and thus is fully compatible with NXAPI  
 
