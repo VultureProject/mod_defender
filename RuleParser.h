@@ -309,9 +309,9 @@ public:
     http_rule_t libxssRule;
 
     RuleParser();
-    static unsigned int parseMainRules(vector<string> &rulesArray);
+    static unsigned int parseMainRules(vector<string> &ruleLines);
     void parseCheckRule(vector<pair<string, string>> &rulesArray);
-    unsigned int parseBasicRules(vector<string> &rulesArray);
+    unsigned int parseBasicRules(vector<string> &ruleLines);
     static void parseAction(string action, rule_action_t& rule_action);
     static void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
     static string parseCode(std::regex_constants::error_type etype);

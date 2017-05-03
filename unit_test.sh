@@ -50,6 +50,7 @@ declare -a core_rules_tests=(
 	# SQL Injections IDs:1000-1099
 	"blah"					0 0 0 0 0 0
 	"select+from"			1 1 1 1 1 1
+	"selected+fromage"		0 0 0 0 0 0
 	"\""					1 1 1 1 1 1
 	"0x0x0x0x"				1 1 1 1 1 1
 	"/*"					1 1 1 1 1 1

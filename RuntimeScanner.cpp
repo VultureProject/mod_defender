@@ -684,7 +684,7 @@ int RuntimeScanner::processHeaders(request_rec *rec) {
                 contentLength = std::stoul(val);
             }
             catch (std::exception const &e) {
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "%s cannot convert content-type: \"%s\" to interger",
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "%s cannot convert content-type: \"%s\" to integer",
                               e.what(), val.c_str());
             }
         }

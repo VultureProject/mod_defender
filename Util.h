@@ -22,15 +22,12 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
-#include <chrono>
 #include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h>
 
 
-using std::chrono::system_clock;
-using namespace std::chrono;
 using std::vector;
 using std::string;
 using std::stringstream;
@@ -137,6 +134,9 @@ namespace Util {
 
     pair<string, string> splitAtFirst(const string &s, string delim);
 
+    std::vector<string>
+    parseRawDirective(std::string raw_directive);
+
     vector<int> splitToInt(string &s, char delimiter);
 
     string apacheTimeFmt();
@@ -146,6 +146,8 @@ namespace Util {
     string formatLog(int loglevel, char *client);
 
     string escapeQuotes(const string &before);
+
+    string unescape(const string &s);
 }
 
 

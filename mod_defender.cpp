@@ -64,8 +64,9 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
                 dcfg->parser->parseCheckRule(dcfg->tmpCheckRules);
                 unsigned int basicRuleCount = dcfg->parser->parseBasicRules(dcfg->tmpBasicRules);
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s,
-                             "Defender active on loc %s: %lu CheckRules loaded, %d BasicRules loaded",
-                             dcfg->loc_path, dcfg->parser->checkRules.size(), basicRuleCount);
+                             "Defender active%s on loc %s: %lu CheckRules loaded, %d BasicRules loaded",
+                             (dcfg->learning ? " (learning)" : ""), dcfg->loc_path, dcfg->parser->checkRules.size(),
+                             basicRuleCount);
                 dcfg->parser->generateHashTables();
             } else {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "Defender scanner disabled for loc %s",
@@ -345,10 +346,8 @@ static const char *set_useenv_flag(cmd_parms *cmd, void *cfg, int flag) {
     return NULL;
 }
 
-static const char *set_mainrules(cmd_parms *cmd, void *, const char *arg) {
-    if (!strcmp(arg, ";"))
-        return NULL;
-    tmpMainRules.push_back(apr_pstrdup(cmd->pool, arg));
+static const char *set_mainrules(cmd_parms *cmd, void *, const char *line) {
+    tmpMainRules.push_back(apr_pstrdup(cmd->pool, line));
     return NULL;
 }
 
@@ -358,9 +357,9 @@ static const char *set_checkrules(cmd_parms *cmd, void *cfg, const char *arg1, c
     return NULL;
 }
 
-static const char *set_basicrules(cmd_parms *cmd, void *cfg, const char *arg) {
+static const char *set_basicrules(cmd_parms *cmd, void *cfg, const char *line) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
-    dcfg->tmpBasicRules.push_back(apr_pstrdup(cmd->pool, arg));
+    dcfg->tmpBasicRules.push_back(apr_pstrdup(cmd->pool, line));
     return NULL;
 }
 
@@ -368,18 +367,18 @@ static const char *set_basicrules(cmd_parms *cmd, void *cfg, const char *arg) {
  * A declaration of the configuration directives that are supported by this module.
  */
 static const command_rec directives[] = {
-        {"Defender",         (cmd_func) set_defender_flag,         NULL, ACCESS_CONF, FLAG,    "Defender toggle"},
-        {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF,   ITERATE, "Match directive"},
-        {"CheckRule",        (cmd_func) set_checkrules,            NULL, ACCESS_CONF, TAKE2,   "Score directive"},
-        {"BasicRule",        (cmd_func) set_basicrules,            NULL, ACCESS_CONF, ITERATE, "Whitelist directive"},
-        {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, ACCESS_CONF, TAKE1,   "Path to the match log"},
-        {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, ACCESS_CONF, TAKE1,   "Path to the JSON match log"},
-        {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, ACCESS_CONF, TAKE1,   "Set Request Body Limit"},
-        {"LearningMode",     (cmd_func) set_learning_flag,         NULL, ACCESS_CONF, FLAG,    "Learning mode toggle"},
-        {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, ACCESS_CONF, FLAG,    "Extensive log toggle"},
-        {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, ACCESS_CONF, FLAG,    "Libinjection SQL toggle"},
-        {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, ACCESS_CONF, FLAG,    "Libinjection XSS toggle"},
-        {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, ACCESS_CONF, FLAG,    "UseEnv toggle"},
+        {"Defender",         (cmd_func) set_defender_flag,         NULL, ACCESS_CONF, FLAG,     "Defender toggle"},
+        {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF,   RAW_ARGS, "Match directive"},
+        {"CheckRule",        (cmd_func) set_checkrules,            NULL, ACCESS_CONF, TAKE2,    "Score directive"},
+        {"BasicRule",        (cmd_func) set_basicrules,            NULL, ACCESS_CONF, RAW_ARGS, "Whitelist directive"},
+        {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, ACCESS_CONF, TAKE1,    "Path to the match log"},
+        {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, ACCESS_CONF, TAKE1,    "Path to the JSON match log"},
+        {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, ACCESS_CONF, TAKE1,    "Set Request Body Limit"},
+        {"LearningMode",     (cmd_func) set_learning_flag,         NULL, ACCESS_CONF, FLAG,     "Learning mode toggle"},
+        {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, ACCESS_CONF, FLAG,     "Extensive log toggle"},
+        {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, ACCESS_CONF, FLAG,     "Libinjection SQL toggle"},
+        {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, ACCESS_CONF, FLAG,     "Libinjection XSS toggle"},
+        {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, ACCESS_CONF, FLAG,     "UseEnv toggle"},
         {NULL}
 };
 

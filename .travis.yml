@@ -24,6 +24,7 @@ before_script:
   - >
     sudo wget -O /etc/defender/core.rules
     https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
+  - sudo sed -i "s/select|union|update|delete|insert|table|from|ascii|hex|unhex|drop/\\\b(select|union|update|delete|insert|table|from|ascii|hex|unhex|drop)\\\b/" /etc/defender/core.rules
   - >
     printf
     "LoadModule defender_module /usr/lib/apache2/modules/mod_defender.so

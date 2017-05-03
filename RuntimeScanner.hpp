@@ -16,7 +16,6 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <chrono>
 #include <httpd.h>
 #include <unordered_map>
 #include <fstream>
@@ -39,7 +38,6 @@
 #endif
 
 using namespace Util;
-using std::chrono::system_clock;
 using std::pair;
 using std::vector;
 using std::string;

@@ -63,7 +63,7 @@ RuleParser::RuleParser() {
     libxssRule.action = BLOCK;
 }
 
-unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
+unsigned int RuleParser::parseMainRules(vector<string> &ruleLines) {
     getRules.clear();
     bodyRules.clear();
     rawBodyRules.clear();
@@ -71,63 +71,67 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
     genericRules.clear();
 
     unsigned int ruleCount = 0;
-    for (int i = 0; i < rulesArray.size(); i += 5) {
+    for (string &ruleLine : ruleLines) {
         bool error = false;
         DEBUG_CONF_MR("MainRule ");
         http_rule_t rule;
         rule.br.active = true;
         rule.type = MAIN_RULE;
-        if (rulesArray[i] == "negative") {
-            rule.br.negative = true;
-            DEBUG_CONF_MR("negative ");
-            i++;
-        }
-        pair<string, string> matchPattern = splitAtFirst(rulesArray[i], ":");
-        std::transform(matchPattern.second.begin(), matchPattern.second.end(), matchPattern.second.begin(), tolower);
-        if (matchPattern.first == "rx") {
-            try {
-                rule.br.rx = regex(matchPattern.second, std::regex::optimize);
-            } catch (std::regex_error &e) {
-                ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", matchPattern.second.c_str(),
-                             parseCode(e.code()).c_str());
-                error = true;
+
+        vector<string> ruleParts = parseRawDirective(ruleLine);
+        for (const string &rulePart : ruleParts) {
+            if (rulePart == "negative") {
+                rule.br.negative = true;
+                DEBUG_CONF_MR("negative=1 ");
             }
-            rule.br.match_type = RX;
-            DEBUG_CONF_MR("rx " << matchPattern.second << " ");
+            else if (rulePart.substr(0, 4) == "str:") {
+                rule.br.str = rulePart.substr(4);
+                std::transform(rule.br.str.begin(), rule.br.str.end(), rule.br.str.begin(), tolower);
+                rule.br.match_type = STR;
+                DEBUG_CONF_MR("str='" << rule.br.str << "' ");
+            }
+            else if (rulePart.substr(0, 3) == "rx:") {
+                string rx = rulePart.substr(3);
+                std::transform(rx.begin(), rx.end(), rx.begin(), tolower);
+                try {
+                    rule.br.rx = regex(rx, std::regex::optimize);
+                } catch (std::regex_error &e) {
+                    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", rx.c_str(),
+                                 parseCode(e.code()).c_str());
+                    error = true;
+                }
+                rule.br.match_type = RX;
+                DEBUG_CONF_MR("rx='" << rx << "' ");
+            } else if (rulePart == "d:libinj_sql") {
+                rule.br.match_type = LIBINJ_SQL;
+                DEBUG_CONF_MR("d='libinj_sql' ");
+            } else if (rulePart == "d:libinj_xss") {
+                rule.br.match_type = LIBINJ_XSS;
+                DEBUG_CONF_MR("d='libinj_xss' ");
+            } else if (rulePart.substr(0, 4) == "msg:") {
+                rule.logMsg = rulePart.substr(4);
+                DEBUG_CONF_MR("msg='" << rule.logMsg << "' ");
+            } else if (rulePart.substr(0, 3) == "mz:") {
+                string rawMatchZone = rulePart.substr(3);
+                parseMatchZone(rule, rawMatchZone);
+            } else if (rulePart.substr(0, 2) == "s:") {
+                string score = rulePart.substr(2);
+                vector<string> scores = split(score, ',');
+                DEBUG_CONF_MR("score=[");
+                for (const string &sc : scores) {
+                    if (sc.front() == '$') { // $SCORE
+                        pair<string, string> scorepair = splitAtFirst(sc, ":");
+                        rule.scores.emplace_back(scorepair.first, std::stoul(scorepair.second));
+                        DEBUG_CONF_MR("'" << scorepair.first << "'='" << scorepair.second << "'");
+                    } else // action
+                        parseAction(sc, rule.action);
+                }
+                DEBUG_CONF_MR("] ");
+            } else if (rulePart.substr(0, 3) == "id:") {
+                rule.id = std::stoul(rulePart.substr(3));
+                DEBUG_CONF_MR("id='" << rule.id << "' ");
+            }
         }
-        else if (matchPattern.first == "str") {
-            rule.br.str = matchPattern.second;
-            rule.br.match_type = STR;
-            DEBUG_CONF_MR("str " << rule.br.str << " ");
-        }
-        else if (rulesArray[i] == "d:libinj_sql") {
-            rule.br.match_type = LIBINJ_SQL;
-            DEBUG_CONF_MR("d libinj_sql ");
-        }
-        else if (rulesArray[i] == "d:libinj_xss") {
-            rule.br.match_type = LIBINJ_XSS;
-            DEBUG_CONF_MR("d libinj_xss ");
-        }
-
-        rule.logMsg = rulesArray[i + 1].substr(4);
-        DEBUG_CONF_MR(rule.logMsg << " ");
-
-        string rawMatchZone = rulesArray[i + 2].substr(3);
-        parseMatchZone(rule, rawMatchZone);
-
-        string score = rulesArray[i + 3].substr(2);
-        vector<string> scores = split(score, ',');
-        for (const string &sc : scores) {
-            if (sc[0] == '$') { // $SCORE
-                pair<string, string> scorepair = splitAtFirst(sc, ":");
-                rule.scores.emplace_back(scorepair.first, std::stoul(scorepair.second));
-                DEBUG_CONF_MR(scorepair.first << " " << scorepair.second << " ");
-            } else // action
-                parseAction(sc, rule.action);
-        }
-
-        rule.id = std::stoul(rulesArray[i + 4].substr(3));
-        DEBUG_CONF_MR(rule.id << " ");
 
         if (!error) {
             /*
@@ -164,7 +168,7 @@ unsigned int RuleParser::parseMainRules(vector<string> &rulesArray) {
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%lu skipped", rule.id);
         DEBUG_CONF_MR(endl);
     }
-    rulesArray.clear();
+    ruleLines.clear();
     return ruleCount;
 }
 
@@ -199,7 +203,7 @@ void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
             DEBUG_CONF_CR(chkrule.limit << " ");
         }
         catch (std::exception const &e) {
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert \"%s\" to interger", e.what(),
+            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert \"%s\" to integer", e.what(),
                          eqParts[2].c_str());
             continue;
         }
@@ -213,40 +217,39 @@ void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
     rulesArray.clear();
 }
 
-unsigned int RuleParser::parseBasicRules(vector<string> &rulesArray) {
+unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines) {
     unsigned int ruleCount = 0;
-    for (int i = 0; i < rulesArray.size(); i += 3) {
+    for (string &ruleLine : ruleLines) {
         DEBUG_CONF_BR("BasicRule ");
         http_rule_t rule;
         rule.type = BASIC_RULE;
-        string rawWhitelist = rulesArray[i].substr(3);
         rule.whitelist = true;
-        rule.wlIds = splitToInt(rawWhitelist, ',');
-        for (const int &id : rule.wlIds) {
-            DEBUG_CONF_BR(id << " ");
-        }
 
-        // If no matchzone specified
-        if (rawWhitelist.back() == ';') {
-            i -= 2;
-            whitelistRules.push_back(rule);
-            DEBUG_CONF_BR(endl);
-            continue;
+        vector<string> ruleParts = parseRawDirective(ruleLine);
+        for (const string &rulePart : ruleParts) {
+            if (rulePart.substr(0, 3) == "wl:") {
+                string rawWhitelist = rulePart.substr(3);
+                rule.wlIds = splitToInt(rawWhitelist, ',');
+                DEBUG_CONF_BR("wl='");
+                for (const int &id : rule.wlIds)
+                    DEBUG_CONF_BR(id << ".");
+                DEBUG_CONF_BR("' ");
+            } else if (rulePart.substr(0, 3) == "mz:") {
+                string rawMatchZone = rulePart.substr(3);
+                parseMatchZone(rule, rawMatchZone);
+                rule.br.active = true;
+            }
         }
-
-        string rawMatchZone = rulesArray[i + 1].substr(3);
-        rule.br.active = true;
-        parseMatchZone(rule, rawMatchZone);
 
         whitelistRules.push_back(rule);
         ruleCount++;
         DEBUG_CONF_BR(endl);
     }
-    rulesArray.clear();
+    ruleLines.clear();
     return ruleCount;
 }
 
-void RuleParser::parseAction(string action, rule_action_t& rule_action) {
+void RuleParser::parseAction(string action, rule_action_t &rule_action) {
     if (action == "BLOCK") {
         rule_action = BLOCK;
         DEBUG_CONF_ACTN("BLOCK ");

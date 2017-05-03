@@ -52,10 +52,49 @@ namespace Util {
         return p;
     }
 
+    std::vector<string> parseRawDirective(std::string raw_directive) {
+        std::size_t semicolon_pos = raw_directive.rfind(';');
+        if (semicolon_pos != std::string::npos) {
+            raw_directive = raw_directive.substr(0, semicolon_pos);
+            raw_directive = rtrim(raw_directive);
+        }
+        std::vector<string> parts;
+        bool in_quotes = false;
+        std::string part;
+        unsigned int backslash = 0;
+        for (int i = 0; i < raw_directive.length(); i++) {
+            const char &c = raw_directive[i];
+            bool char_added = false;
+            if (in_quotes || (c != ' ')) {
+                part.push_back(c);
+                if (in_quotes && backslash % 2 == 1 && c == '"') {
+
+                } else if ((c == '"' && !in_quotes))
+                    in_quotes = true;
+                else if (c == '"')
+                    in_quotes = false;
+                char_added = true;
+            }
+            if (in_quotes && c == '\\')
+                backslash++;
+            else
+                backslash = 0;
+            if (!part.empty() && (!char_added || (i == raw_directive.length() - 1))) {
+                if (part.front() == '\"' && part.back() == '\"') {
+                    part.erase(0, 1); // remove leading and
+                    part.pop_back(); // trailing double quotes
+                }
+                parts.push_back(unescape(part));
+                part.clear();
+            }
+        }
+        return parts;
+    }
+
     string apacheTimeFmt() {
         time_t timer;
         char date[20];
-        struct tm* tm_info;
+        struct tm *tm_info;
         time(&timer);
         tm_info = localtime(&timer);
         strftime(date, 20, "%a %b %d %T", tm_info);
@@ -76,7 +115,7 @@ namespace Util {
     string naxsiTimeFmt() {
         time_t timer;
         char buffer[26];
-        struct tm* tm_info;
+        struct tm *tm_info;
         time(&timer);
         tm_info = localtime(&timer);
         strftime(buffer, 26, "%Y/%m/%d %T", tm_info);
@@ -237,5 +276,37 @@ namespace Util {
             }
         }
         return after;
+    }
+
+    /*
+     * Similar to Apache directive args parsing:
+     * \\ -> \
+     * \ -> \
+     * \" -> "
+     * \<any other char> -> \<any other char>
+     */
+    string unescape(const string &s) {
+        string res;
+        string::const_iterator it = s.begin();
+        while (it != s.end()) {
+            char c = *it++;
+            if (c == '\\' && it != s.end()) {
+                char next = *it++;
+                switch (next) {
+                    case '\\':
+                        c = '\\';
+                        break;
+                    case '"':
+                        c = '"';
+                        break;
+                    default:
+                        res += c;
+                        res += next;
+                        continue;
+                }
+            }
+            res += c;
+        }
+        return res;
     }
 }
