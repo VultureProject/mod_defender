@@ -15,8 +15,8 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 ## Required packages
 * apache2 dev package to provide Apache2 headers
 * apr package to provide Apache Portal Runtime library and headers
-* gcc & g++ >= 4.9
-* make
+* gcc & g++ >= 4.9 (for std::regex)
+* GNU make
 * cmake >= 3.2
 
 ## Installation
@@ -28,13 +28,13 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 
 1. Compile the source
 	```sh
-	cmake .
-	make -j 4
+	cmake -H. -Bbuild
+	cmake --build build -- -j4
 	```
 
 1. Install the module
     ```sh
-    sudo cp mod_defender.so /usr/lib/apache2/modules/
+    sudo cp build/mod_defender.so /usr/lib/apache2/modules/
     ```
 
 1. Create its module load file
@@ -115,13 +115,13 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 
 1. Compile the source
 	```sh
-	cmake .
-	make -j 4
+	cmake -H. -Bbuild
+    cmake --build build -- -j4
 	```
 
 1. Install the module
     ```sh
-    cp mod_defender.so /usr/local/libexec/apache24/
+    cp build/mod_defender.so /usr/local/libexec/apache24/
     ```
 
 1. Create its module load file

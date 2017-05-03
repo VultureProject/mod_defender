@@ -62,9 +62,9 @@ before_script:
 
 
 script:
-  - cmake .
-  - make
-  - sudo cp mod_defender.so /usr/lib/apache2/modules/
+  - cmake -H. -Bbuild
+  - cmake --build build
+  - sudo cp build/mod_defender.so /usr/lib/apache2/modules/
   - sudo service apache2 start
   - bash unit_test.sh localhost
 
