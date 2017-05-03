@@ -6,7 +6,7 @@ set(CMAKE_SHARED_LIBRARY_PREFIX "")
 include_directories(/usr/include/apache2 /usr/include/apr-1.0 /usr/include/apr-1 /usr/include /usr/local/include/apr-1/
         /usr/local/include/ /usr/local/include/apache24 /usr/home/vlt-sys/Engine/include/)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
+set(CMAKE_CXX_STANDARD 11)
 
 file(GLOB SOURCE_FILES *.cpp libinjection/*.c)
 add_library(mod_defender SHARED ${SOURCE_FILES})
