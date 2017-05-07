@@ -10,24 +10,15 @@
 
 #include "RuntimeScanner.hpp"
 #include "JsonValidator.hpp"
-#include <util_script.h>
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-#include "mod_defender.hpp"
 #include "RuleParser.h"
-
-void RuntimeScanner::streamToFile(const stringstream &ss, apr_file_t *fd) {
-    if (!fd) return;
-    const string tmp = ss.str();
-    apr_size_t loglen = tmp.size();
-    apr_file_write(fd, tmp.c_str(), &loglen);
-}
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
-    if (r->log->level >= APLOG_NOTICE) {
+    if (logLevel >= LOG_LVL_NOTICE) {
         stringstream errlog;
-        errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
+        errlog << formatLog(LOG_LVL_NOTICE, clientIp);
         errlog << KRED "⚠ Rule #" << rule.id << " ";
         errlog << "(" << rule.logMsg << ") ";
         errlog << "matched " << nbMatch << " times ";
@@ -40,14 +31,14 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
         errlog << " ";
         if (rule.action != ALLOW)
             errlog << actions[rule.action] << " ";
-        if (rule.action == BLOCK && dcfg->learning)
+        if (rule.action == BLOCK && learning)
             errlog << "(learning)";
         errlog << KNRM << endl;
-        streamToFile(errlog, r->server->error_log);
+        streamToFile(errlog, errorLogFile);
     }
     applyRuleAction(rule.action);
 
-    if (!dcfg->learning)
+    if (!learning)
         return;
 
     if (rulesMatchedCount > 0)
@@ -56,13 +47,13 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
     matchVars << "id" << rulesMatchedCount << "=" << rule.id << "&";
     matchVars << "var_name" << rulesMatchedCount << "=" << name;
 
-    if (dcfg->jsonmatchlog_fd) {
+    if (learningJSONLogFile) {
         if (rulesMatchedCount > 0)
             jsonMatchVars << ",";
         jsonMatchVars << "{\"zone\":\"" << match_zones[zone] << "\",";
         jsonMatchVars << "\"id\":" << rule.id << ",";
         jsonMatchVars << "\"var_name\":\"" << escapeQuotes(name) << "\"";
-        if (dcfg->extensive)
+        if (extensiveLearning)
             jsonMatchVars << ",\"content\":\"" << escapeQuotes(value) << "\"";
         jsonMatchVars << "}";
     }
@@ -84,16 +75,16 @@ void RuntimeScanner::applyRuleAction(const rule_action_t &rule_action) {
 void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMatch, const string &name,
                                     const string &value, MATCH_ZONE zone, bool targetName) {
     if (parser.isRuleWhitelisted(rule, uri, name, zone, targetName)) {
-        if (r->log->level >= APLOG_NOTICE) {
+        if (logLevel >= LOG_LVL_NOTICE) {
             stringstream errlog;
-            errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
+            errlog << formatLog(LOG_LVL_NOTICE, clientIp);
             errlog << KGRN "✓ Rule #" << rule.id << " ";
             errlog << "(" << rule.logMsg << ") ";
             errlog << "whitelisted ";
             if (targetName)
                 errlog << "in name ";
             errlog << "at " << match_zones[zone] << " " << name << ":" << value << KNRM << endl;
-            streamToFile(errlog, r->server->error_log);
+            streamToFile(errlog, errorLogFile);
         }
         return;
     }
@@ -109,8 +100,8 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
         int &score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
 
-        if (r->log->level >= APLOG_NOTICE) {
-            errlog << formatLog(APLOG_NOTICE, r->useragent_ip);
+        if (logLevel >= LOG_LVL_NOTICE) {
+            errlog << formatLog(LOG_LVL_NOTICE, clientIp);
             errlog << KYEL "→ Score " << tagScore.first << " = " << score << " ";
         }
         check_rule_t &checkRule = parser.checkRules[tagScore.first];
@@ -125,17 +116,17 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
 
         if (matched) {
             applyRuleAction(checkRule.action);
-            if (r->log->level >= APLOG_NOTICE && checkRule.action != ALLOW) {
+            if (logLevel >= LOG_LVL_NOTICE && checkRule.action != ALLOW) {
                 errlog << actions[checkRule.action] << " "
-                       << (dcfg->learning && checkRule.action == BLOCK ? "(learning)" : "");
+                       << (learning && checkRule.action == BLOCK ? "(learning)" : "");
             }
         }
-        if (r->log->level >= APLOG_NOTICE)
+        if (logLevel >= LOG_LVL_NOTICE)
             errlog << KNRM << endl;
     }
 
-    if (r->log->level >= APLOG_NOTICE)
-        streamToFile(errlog, r->server->error_log);
+    if (logLevel >= LOG_LVL_NOTICE)
+        streamToFile(errlog, errorLogFile);
 }
 
 bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl, unsigned long &nbMatch) {
@@ -180,11 +171,11 @@ bool RuntimeScanner::processRuleBuffer(const string &str, const http_rule_t &rl,
 
 void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
                                     const vector<http_rule_t> &rules) {
-    if (dcfg->libinjection)
+    if (libinjSQL || libinjXSS)
         checkLibInjection(zone, name, value);
 
     unsigned long nbMatch = 0;
-    for (int i = 0; i < rules.size() && ((!block || dcfg->learning) && !drop); i++) {
+    for (int i = 0; i < rules.size() && ((!block || learning) && !drop); i++) {
         const http_rule_t &rule = rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 
@@ -248,7 +239,7 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
     if (value.empty() && name.empty())
         return;
 
-    if (dcfg->libinjection_sql) {
+    if (libinjSQL) {
         struct libinjection_sqli_state state;
 
         if (!value.empty()) {
@@ -270,7 +261,7 @@ void RuntimeScanner::checkLibInjection(MATCH_ZONE zone, const string &name, cons
         }
     }
 
-    if (dcfg->libinjection_xss) {
+    if (libinjXSS) {
         if (!value.empty() && libinjection_xss(value.c_str(), value.size())) {
             applyCheckRule(parser.libxssRule, 1, name, value, zone, false);
         }
@@ -351,9 +342,9 @@ bool RuntimeScanner::contentDispositionParser(unsigned char *str, unsigned char 
         } else if (str == line_end - 1)
             break;
         else {
-            /* gargabe is present ?*/
-            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                          "extra data in content-disposition ? end:%s, str:%s, diff=%ld", line_end, str,
+            /* garbage is present ?*/
+            logg(LOG_LVL_NOTICE, errorLogFile,
+                          "extra data in content-disposition ? end:%s, str:%s, diff=%ld\n", line_end, str,
                           line_end - str);
             return false;
         }
@@ -389,7 +380,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
     /*extract boundary*/
     if (!parseFormDataBoundary(&boundary, &boundary_len)) {
         if (boundary && boundary_len > 1)
-            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "XX-POST boundary : (%s) : %ld", (const char *) boundary,
+            logg(LOG_LVL_NOTICE, errorLogFile, "XX-POST boundary : (%s) : %ld\n", (const char *) boundary,
                           boundary_len);
         applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", empty, false);
         return;
@@ -505,7 +496,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
             }
         }
         if (!end) {
-            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "POST data : malformed line");
+            logg(LOG_LVL_NOTICE, errorLogFile, "POST data : malformed line\n");
             return;
         }
         if (filen_start) {
@@ -556,7 +547,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
 
             idx += end - (src + idx);
         } else {
-            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "(multipart) : ");
+            logg(LOG_LVL_NOTICE, errorLogFile, "(multipart) : \n");
         }
         if (!strncmp((const char *) end, "\r\n", 2))
             idx += 2;
@@ -582,13 +573,13 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
             str++;
             continue;
         }
-        if ((block && !dcfg->learning) || drop)
+        if ((block && !learning) || drop)
             return false;
         eq = strchr(str, '=');
         ev = strchr(str, '&');
 
         if ((!eq && !ev) /*?foobar */ || (eq && ev && eq > ev)) /*?foobar&bla=test*/ {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '&' and '=' or has both [%s]", str);
+            logg(LOG_LVL_DEBUG, errorLogFile, "XX-url has no '&' and '=' or has both [%s]\n", str);
 
             if (!ev)
                 ev = str + strlen(str);
@@ -603,7 +594,7 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
         }
             /* ?&&val | ?var&& | ?val& | ?&val | ?val&var */
         else if (!eq) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "XX-url has no '=' but has '&' [%s]", str);
+            logg(LOG_LVL_DEBUG, errorLogFile, "XX-url has no '=' but has '&' [%s]\n", str);
 
             applyRuleMatch(parser.uncommonUrl, 1, zone, empty, empty, false);
             if (ev > str) /* ?var& | ?var&val */ {
@@ -663,110 +654,107 @@ bool RuntimeScanner::splitUrlEncodedRuleset(char *str, const vector<http_rule_t>
     return false;
 }
 
-int RuntimeScanner::processHeaders(request_rec *rec) {
-    r = rec;
-
-    /* Store the uri path */
-    uri = string(r->parsed_uri.path);
+void RuntimeScanner::setUri(char *uri_path) {
+    uri = string(uri_path);
     transform(uri.begin(), uri.end(), uri.begin(), tolower);
+}
 
-    /* Store every HTTP header received */
-    const apr_array_header_t *headerFields = apr_table_elts(r->headers_in);
-    apr_table_entry_t *headerEntry = (apr_table_entry_t *) headerFields->elts;
-    for (int i = 0; i < headerFields->nelts; i++) {
-//        cerr << headerEntry[i].key << ":" << headerEntry[i].val << endl;
-        string key = string(headerEntry[i].key);
-        string val = string(headerEntry[i].val);
-        transform(key.begin(), key.end(), key.begin(), tolower);
-        /* Retrieve Content-Length */
-        if (key == "content-length") {
-            try {
-                contentLength = std::stoul(val);
-            }
-            catch (std::exception const &e) {
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "%s cannot convert content-type: \"%s\" to integer",
-                              e.what(), val.c_str());
-            }
+void RuntimeScanner::addHeader(char *key, char *val) {
+    string k = string(key);
+    string v = string(val);
+    transform(k.begin(), k.end(), k.begin(), tolower);
+    transform(v.begin(), v.end(), v.begin(), tolower);
+    // Retrieve Content-Length
+    if (k == "content-length") {
+        try {
+            contentLength = std::stoul(v);
         }
-            /* Store Content-Type for further processing */
-        else if (key == "content-type") {
-            if (caseEqual(val, "application/x-www-form-urlencoded")) {
-                contentType = URL_ENC;
-            } else if (caseEqual(val.substr(0, 20), "multipart/form-data;")) {
-                contentType = MULTIPART;
-                rawContentType = string(val);
-            } else if (caseEqual(val, "application/json")) {
-                contentType = APP_JSON;
-            }
+        catch (std::exception const &e) {
+            logg(LOG_LVL_NOTICE, errorLogFile, "%s cannot convert content-length: \"%s\" to integer\n",
+                 e.what(), v.c_str());
         }
-        transform(val.begin(), val.end(), val.begin(), tolower);
-        basestrRuleset(HEADERS, key, val, headerRules);
     }
-
-    /* Retrieve GET parameters */
-    apr_table_t *getTable = NULL;
-    ap_args_to_table(r, &getTable);
-    const apr_array_header_t *getParams = apr_table_elts(getTable);
-    apr_table_entry_t *getParam = (apr_table_entry_t *) getParams->elts;
-    for (int i = 0; i < getParams->nelts; i++) {
-//        cerr << getParam[i].key << ":" << getParam[i].val << endl;
-        string key = string(getParam[i].key);
-        string val = string(getParam[i].val);
-        transform(key.begin(), key.end(), key.begin(), tolower);
-        transform(val.begin(), val.end(), val.begin(), tolower);
-        basestrRuleset(ARGS, key, val, getRules);
+        // Store Content-Type for further processing
+    else if (k == "content-type") {
+        if (v == "application/x-www-form-urlencoded") {
+            contentType = CONTENT_TYPE_URL_ENC;
+        } else if (v.substr(0, 20) == "multipart/form-data;") {
+            contentType = CONTENT_TYPE_MULTIPART;
+            rawContentType = string(val); // important: need to keep the case!
+        } else if (v == "application/json") {
+            contentType = CONTENT_TYPE_APP_JSON;
+        }
     }
+    headers.push_back(make_pair(k, v));
+}
 
+void RuntimeScanner::addGETParameter(char* key, char* val) {
+    string k = string(key);
+    string v = string(val);
+    transform(k.begin(), k.end(), k.begin(), tolower);
+    transform(v.begin(), v.end(), v.begin(), tolower);
+    get.push_back(make_pair(k, v));
+}
+
+int RuntimeScanner::processHeaders() {
+    // Scan headers
+    for (pair<string, string> &headerPair : headers)
+        basestrRuleset(HEADERS, headerPair.first, headerPair.second, headerRules);
+    
+    // Scan GET parameters
+    for (const pair<string, string> &getPair : get)
+        basestrRuleset(ARGS, getPair.first, getPair.second, getRules);
+
+    // Scan URL path
     basestrRuleset(URL, empty, uri, genericRules);
 
-    if (r->method_number == M_POST || r->method_number == M_PUT)
-        return DECLINED;
+    if (method == METHOD_POST || method == METHOD_PUT)
+        return PASS;
 
     return processAction();
 }
 
 int RuntimeScanner::processBody() {
     /* Process only if POST / PUT request */
-    if (r->method_number != M_POST && r->method_number != M_PUT) {
-        return DECLINED;
-    }
+    if (method != METHOD_POST && method != METHOD_PUT)
+        return PASS;
 
     /* Stop if BODY is empty */
-    if (rawBody.empty()) {
+    if (body.empty()) {
         applyRuleMatch(parser.emptyPostBody, 1, BODY, empty, empty, false);
         return processAction();
     }
 
-    if (contentType == UNSUPPORTED) {
+    if (contentType == CONTENT_TYPE_UNSUPPORTED) {
         applyRuleMatch(parser.uncommonContentType, 1, HEADERS, empty, empty, false);
         return processAction();
     }
 
     /* If Content-Type: application/x-www-form-urlencoded */
-    if (contentType == URL_ENC) {
-        if (splitUrlEncodedRuleset(&rawBody[0], bodyRules, BODY)) {
+    if (contentType == CONTENT_TYPE_URL_ENC) {
+        if (splitUrlEncodedRuleset(&body[0], bodyRules, BODY)) {
             applyRuleMatch(parser.uncommonUrl, 1, BODY, empty, empty, false);
         }
     }
         /* If Content-Type: multipart/form-data */
-    else if (contentType == MULTIPART) {
-        multipartParse((u_char *) &rawBody[0], rawBody.length());
+    else if (contentType == CONTENT_TYPE_MULTIPART) {
+        multipartParse((u_char *) &body[0], body.length());
     }
         /* If Content-Type: application/json */
-    else if (contentType == APP_JSON) {
+    else if (contentType == CONTENT_TYPE_APP_JSON) {
         JsonValidator jsonValidator = JsonValidator(*this);
-        jsonValidator.jsonParse((u_char *) &rawBody[0], rawBody.length());
+        jsonValidator.jsonParse((u_char *) &body[0], body.length());
     }
         /* Raw Body */
     else {
-        str_t body;
-        body.data = (u_char *) &rawBody[0];
-        body.len = rawBody.length();
+        str_t raw_body;
+        raw_body.data = (u_char *) &body[0];
+        raw_body.len = body.length();
 
-        naxsi_unescape(&body);
-        rawBody.resize(body.len);
+        naxsi_unescape(&raw_body);
+        body.resize(raw_body.len);
 
-        basestrRuleset(RAW_BODY, empty, rawBody, rawBodyRules);
+        basestrRuleset(RAW_BODY, empty, body, rawBodyRules);
     }
 
     return processAction();
@@ -776,46 +764,52 @@ int RuntimeScanner::processAction() {
     writeLearningLog();
     writeJSONLearningLog();
 
-    if (dcfg->useenv) {
-        if ((block && !dcfg->learning) || drop)
-            apr_table_set(r->subprocess_env, "defender_action", "block");
-        for (const auto &match : matchScores) {
-            apr_table_set(r->subprocess_env, apr_psprintf(r->pool, "defender_%s", match.first.c_str()),
-                          apr_itoa(r->pool, match.second));
-        }
-        return DECLINED;
-    }
+    if ((block && !learning) || drop)
+        return STOP;
 
-    if ((block && !dcfg->learning) || drop)
-        return HTTP_FORBIDDEN;
+    return PASS;
+}
 
-    return DECLINED;
+void RuntimeScanner::streamToFile(const stringstream &ss, void *file) {
+    if (!file) return;
+    const string tmp = ss.str();
+    size_t loglen = tmp.size();
+    writeLogFn(file, tmp.c_str(), &loglen);
+}
+
+void RuntimeScanner::logg(int priority, void *file, const char *fmt, ...) {
+    va_list args;
+    char logbuf[256];
+    va_start(args, fmt);
+    if (priority <= logLevel)
+        vsnprintf(logbuf, 256, fmt, args);
+    va_end(args);
+    size_t loglen = strlen(logbuf);
+    writeLogFn(file, logbuf, &loglen);
 }
 
 /*
  * YYYY/MM/DD HH:MM:SS [LEVEL] PID#TID: *CID MESSAGE
  */
 void RuntimeScanner::writeLearningLog() {
-    if (!dcfg->learning || rulesMatchedCount == 0)
+    if (!learning || rulesMatchedCount == 0)
         return;
 
     stringstream learninglog;
     learninglog << naxsiTimeFmt() << " ";
     learninglog << "[error] ";
-    learninglog << getpid() << "#";
-    learninglog << apr_os_thread_current() << ": ";
-    learninglog << "*" << r->connection->id << " ";
+    learninglog << pid << "#";
+    learninglog << threadId << ": ";
+    learninglog << "*" << connectionId << " ";
 
     learninglog << "NAXSI_FMT: ";
 
-    learninglog << "ip=" << r->useragent_ip << "&";
-    learninglog << "server=" << r->hostname << "&";
-    learninglog << "uri=" << r->parsed_uri.path << "&";
+    learninglog << "ip=" << clientIp << "&";
+    learninglog << "server=" << requestedHost << "&";
+    learninglog << "uri=" << uri << "&";
 
-    learninglog << "learning=" << dcfg->learning << "&";
-    ap_version_t vers;
-    ap_get_server_revision(&vers);
-    learninglog << "vers=" << vers.major << "." << vers.minor << "." << vers.patch << "&";
+    learninglog << "learning=" << learning << "&";
+    learninglog << "vers=" << softwareVersion << "&";
 
     learninglog << "block=" << (block || drop) << "&";
     int i = 0;
@@ -829,31 +823,31 @@ void RuntimeScanner::writeLearningLog() {
 
     learninglog << ", ";
 
-    learninglog << "client: " << r->useragent_ip << ", ";
-    learninglog << "server: " << r->server->server_hostname << ", ";
-    learninglog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
-    learninglog << "host: \"" << r->hostname << "\"";
+    learninglog << "client: " << clientIp << ", ";
+    learninglog << "server: " << serverHostname << ", ";
+    learninglog << "request: \"" << methods[method] << " " << fullUri << " " << protocol << "\", ";
+    learninglog << "host: \"" << requestedHost << "\"";
 
     learninglog << endl;
-    streamToFile(learninglog, dcfg->matchlog_fd);
+    streamToFile(learninglog, learningLogFile);
 }
 
 void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone, const string &name,
                                        const string &value, bool targetName) {
-    if (!dcfg->extensive)
+    if (!extensiveLearning)
         return;
     stringstream extensivelog;
     extensivelog << naxsiTimeFmt() << " ";
     extensivelog << "[error] ";
-    extensivelog << getpid() << "#";
-    extensivelog << apr_os_thread_current() << ": ";
-    extensivelog << "*" << r->connection->id << " ";
+    extensivelog << pid << "#";
+    extensivelog << threadId << ": ";
+    extensivelog << "*" << connectionId << " ";
 
     extensivelog << "NAXSI_EXLOG: ";
 
-    extensivelog << "ip=" << r->useragent_ip << "&";
-    extensivelog << "server=" << r->hostname << "&";
-    extensivelog << "uri=" << r->parsed_uri.path << "&";
+    extensivelog << "ip=" << clientIp << "&";
+    extensivelog << "server=" << serverHostname << "&";
+    extensivelog << "uri=" << uri << "&";
 
     extensivelog << "id=" << rule.id << "&";
     extensivelog << "zone=" << match_zones[zone];
@@ -863,17 +857,17 @@ void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone,
     extensivelog << "var_name=" << name << "&";
     extensivelog << "content=" << value << ",";
 
-    extensivelog << "client: " << r->useragent_ip << ", ";
-    extensivelog << "server: " << r->server->server_hostname << ", ";
-    extensivelog << "request: \"" << r->method << " " << r->unparsed_uri << " " << r->protocol << "\", ";
-    extensivelog << "host: \"" << r->hostname << "\"";
+    extensivelog << "client: " << clientIp << ", ";
+    extensivelog << "server: " << serverHostname << ", ";
+    extensivelog << "request: \"" << methods[method] << " " << fullUri << " " << protocol << "\", ";
+    extensivelog << "host: \"" << requestedHost << "\"";
 
     extensivelog << endl;
-    streamToFile(extensivelog, dcfg->matchlog_fd);
+    streamToFile(extensivelog, learningLogFile);
 }
 
 void RuntimeScanner::writeJSONLearningLog() {
-    if (!dcfg->learning || rulesMatchedCount == 0)
+    if (!learning || rulesMatchedCount == 0)
         return;
 
     stringstream jsonlog;
@@ -882,9 +876,9 @@ void RuntimeScanner::writeJSONLearningLog() {
     jsonlog << "{\"timestamp\":";
     jsonlog << result << ",";
 
-    jsonlog << "\"ip\":\"" << r->useragent_ip << "\",";
-    jsonlog << "\"hostname\":\"" << r->hostname << "\",";
-    jsonlog << "\"uri\":\"" << r->parsed_uri.path << "\",";
+    jsonlog << "\"ip\":\"" << clientIp << "\",";
+    jsonlog << "\"hostname\":\"" << requestedHost << "\",";
+    jsonlog << "\"uri\":\"" << uri << "\",";
 
     jsonlog << "\"block\":" << (block || drop) << ",";
     jsonlog << "\"scores\":{";
@@ -898,13 +892,12 @@ void RuntimeScanner::writeJSONLearningLog() {
 
     jsonlog << "\"vars\":[" << jsonMatchVars.str() << "],";
 
-    jsonlog << "\"client\":\"" << r->useragent_ip << "\",";
-    jsonlog << "\"server\":\"" << r->server->server_hostname << "\",";
-    jsonlog << "\"method\":\"" << r->method << "\",";
-    jsonlog << "\"protocol\":\"" << r->protocol << "\",";
-    jsonlog << "\"unparsed_uri\":\"" << r->unparsed_uri << "\",";
-    jsonlog << "\"host\":\"" << r->hostname << "\"";
+    jsonlog << "\"client\":\"" << clientIp << "\",";
+    jsonlog << "\"server\":\"" << serverHostname << "\",";
+    jsonlog << "\"method\":\"" << methods[method] << "\",";
+    jsonlog << "\"protocol\":\"" << protocol << "\",";
+    jsonlog << "\"unparsed_uri\":\"" << fullUri << "\"";
 
     jsonlog << "}" << endl;
-    streamToFile(jsonlog, dcfg->jsonmatchlog_fd);
+    streamToFile(jsonlog, learningJSONLogFile);
 }

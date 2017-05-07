@@ -3,12 +3,19 @@ project(mod_defender)
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
-include_directories(/usr/include/apache2 /usr/include/apr-1.0 /usr/include/apr-1 /usr/include /usr/local/include/apr-1/
-        /usr/local/include/ /usr/local/include/apache24 /usr/home/vlt-sys/Engine/include/)
+include_directories(deps/
+        /usr/include/apache2
+        /usr/include/apr-1.0
+        /usr/include/apr-1
+        /usr/include
+        /usr/local/include/apr-1/
+        /usr/local/include/
+        /usr/local/include/apache24
+        /usr/home/vlt-sys/Engine/include/)
 
 set(CMAKE_CXX_STANDARD 11)
 
-file(GLOB SOURCE_FILES *.cpp libinjection/*.c)
+file(GLOB SOURCE_FILES *.cpp deps/libinjection/*.c)
 add_library(mod_defender SHARED ${SOURCE_FILES})
 
 if (AUTO)

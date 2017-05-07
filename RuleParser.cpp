@@ -8,7 +8,6 @@
  *  Released under the GPLv3
  */
 
-#include <apr_strings.h>
 #include "RuleParser.h"
 
 vector<string> tmpMainRules;
@@ -63,7 +62,7 @@ RuleParser::RuleParser() {
     libxssRule.action = BLOCK;
 }
 
-unsigned int RuleParser::parseMainRules(vector<string> &ruleLines) {
+unsigned int RuleParser::parseMainRules(vector<string> &ruleLines, string errorMsg) {
     getRules.clear();
     bodyRules.clear();
     rawBodyRules.clear();
@@ -71,6 +70,7 @@ unsigned int RuleParser::parseMainRules(vector<string> &ruleLines) {
     genericRules.clear();
 
     unsigned int ruleCount = 0;
+    stringstream err;
     for (string &ruleLine : ruleLines) {
         bool error = false;
         DEBUG_CONF_MR("MainRule ");
@@ -96,8 +96,7 @@ unsigned int RuleParser::parseMainRules(vector<string> &ruleLines) {
                 try {
                     rule.br.rx = regex(rx, std::regex::optimize);
                 } catch (std::regex_error &e) {
-                    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "rx:%s %s", rx.c_str(),
-                                 parseCode(e.code()).c_str());
+                    err << "rx:" << rx << " " << parseCode(e.code()) << endl;
                     error = true;
                 }
                 rule.br.match_type = RX;
@@ -113,7 +112,7 @@ unsigned int RuleParser::parseMainRules(vector<string> &ruleLines) {
                 DEBUG_CONF_MR("msg='" << rule.logMsg << "' ");
             } else if (rulePart.substr(0, 3) == "mz:") {
                 string rawMatchZone = rulePart.substr(3);
-                parseMatchZone(rule, rawMatchZone);
+                parseMatchZone(rule, rawMatchZone, err);
             } else if (rulePart.substr(0, 2) == "s:") {
                 string score = rulePart.substr(2);
                 vector<string> scores = split(score, ',');
@@ -165,14 +164,16 @@ unsigned int RuleParser::parseMainRules(vector<string> &ruleLines) {
         if (!error)
             ruleCount++;
         else
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "MainRule #%lu skipped", rule.id);
+            err << "MainRule #" << rule.id << " skipped" << endl;
         DEBUG_CONF_MR(endl);
     }
+    errorMsg = err.str();
     ruleLines.clear();
     return ruleCount;
 }
 
-void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
+void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray, string errorMsg) {
+    stringstream err;
     for (const pair<string, string> &rule : rulesArray) {
         const string &equation = rule.first;
         const string &action = rule.second;
@@ -203,8 +204,7 @@ void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
             DEBUG_CONF_CR(chkrule.limit << " ");
         }
         catch (std::exception const &e) {
-            ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "%s cannot convert \"%s\" to integer", e.what(),
-                         eqParts[2].c_str());
+            err << e.what() << " cannot convert " << eqParts[2] << " to integer" << endl;
             continue;
         }
 
@@ -214,11 +214,13 @@ void RuleParser::parseCheckRule(vector<pair<string, string>> &rulesArray) {
 
         DEBUG_CONF_CR(endl);
     }
+    errorMsg = err.str();
     rulesArray.clear();
 }
 
-unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines) {
+unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines, string errorMsg) {
     unsigned int ruleCount = 0;
+    stringstream err;
     for (string &ruleLine : ruleLines) {
         DEBUG_CONF_BR("BasicRule ");
         http_rule_t rule;
@@ -236,7 +238,7 @@ unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines) {
                 DEBUG_CONF_BR("' ");
             } else if (rulePart.substr(0, 3) == "mz:") {
                 string rawMatchZone = rulePart.substr(3);
-                parseMatchZone(rule, rawMatchZone);
+                parseMatchZone(rule, rawMatchZone, err);
                 rule.br.active = true;
             }
         }
@@ -245,6 +247,7 @@ unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines) {
         ruleCount++;
         DEBUG_CONF_BR(endl);
     }
+    errorMsg = err.str();
     ruleLines.clear();
     return ruleCount;
 }
@@ -265,7 +268,7 @@ void RuleParser::parseAction(string action, rule_action_t &rule_action) {
     }
 }
 
-void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
+void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone, stringstream &err) {
     vector<string> matchZones = split(rawMatchZone, '|');
     for (const string &mz : matchZones) {
         if (mz[0] != '$') {
@@ -343,7 +346,7 @@ void RuleParser::parseMatchZone(http_rule_t &rule, string &rawMatchZone) {
                 try {
                     customRule.targetRx = regex(cmz.second, std::regex::optimize);
                 } catch (std::regex_error &e) {
-                    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "regex_error: %s", parseCode(e.code()).c_str());
+                    err << "regex_error: " << parseCode(e.code()) << endl;
                     continue;
                 }
                 DEBUG_CONF_MZ("(rx)" << cmz.second << " ");

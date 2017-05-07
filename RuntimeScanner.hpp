@@ -16,11 +16,11 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <httpd.h>
 #include <unordered_map>
 #include <fstream>
+#include <functional>
+#include <cstdarg>
 #include "RuleParser.h"
-#include "mod_defender.hpp"
 #include "JsonValidator.hpp"
 
 //#define DEBUG_RUNTIME_PROCESSRULE
@@ -37,8 +37,12 @@
 #define DEBUG_RUNTIME_BRS(x)
 #endif
 
+#define PASS -1
+#define STOP 403
+
 using namespace Util;
 using std::pair;
+using std::make_pair;
 using std::vector;
 using std::string;
 using std::cerr;
@@ -50,42 +54,92 @@ using std::regex_match;
 using std::distance;
 using std::unordered_map;
 using std::transform;
+using std::function;
 
 const std::string empty = string();
 
+enum METHOD {
+    METHOD_GET = 0,
+    METHOD_POST,
+    METHOD_PUT,
+    UNSUPPORTED_METHOD,
+};
+
+static const char *methods[] = {"GET", "POST", "PUT", NULL};
+
 enum CONTENT_TYPE {
-    UNSUPPORTED = 0,
-    URL_ENC, // application/x-www-form-urlencoded
-    MULTIPART, // multipart/form-data
-    APP_JSON, // application/json
+    CONTENT_TYPE_UNSUPPORTED = 0,
+    CONTENT_TYPE_URL_ENC, // application/x-www-form-urlencoded
+    CONTENT_TYPE_MULTIPART, // multipart/form-data
+    CONTENT_TYPE_APP_JSON, // application/json
+};
+
+enum LOG_LVL {
+    LOG_LVL_EMERG = 0,
+    LOG_LVL_ALERT,
+    LOG_LVL_CRIT,
+    LOG_LVL_ERR,
+    LOG_LVL_WARNING,
+    LOG_LVL_NOTICE,
+    LOG_LVL_INFO,
+    LOG_LVL_DEBUG
 };
 
 class RuntimeScanner {
     friend class JsonValidator;
 private:
-    request_rec* r;
-    dir_config_t* dcfg;
     RuleParser& parser;
     stringstream matchVars;
     stringstream jsonMatchVars;
     unsigned int rulesMatchedCount = 0;
     string uri;
-    unordered_map<string, int> matchScores;
+    vector<pair<string, string>> headers;
+    vector<pair<string, string>> get;
     string rawContentType;
+
+public:
+    METHOD method = UNSUPPORTED_METHOD;
+    CONTENT_TYPE contentType = CONTENT_TYPE_UNSUPPORTED;
+    unsigned long contentLength = 0;
+    string body;
+    
+    int pid = 0;
+    long connectionId = 0;
+    long threadId = 0;
+    string clientIp;
+    string requestedHost;
+    string serverHostname;
+    string fullUri;
+    string protocol;
+    string softwareVersion;
+
+    LOG_LVL logLevel = LOG_LVL_EMERG;
+    void *errorLogFile;
+    void *learningLogFile;
+    void *learningJSONLogFile;
+    
+    bool learning;
+    bool extensiveLearning;
+    bool libinjSQL;
+    bool libinjXSS;
+
+    unordered_map<string, int> matchScores;
 
     bool block = false;
     bool drop = false;
     bool allow = false;
     bool log = false;
 
-public:
-    CONTENT_TYPE contentType = UNSUPPORTED;
-    unsigned long contentLength = 0;
-    string rawBody;
+    function<int(void *file, const void *buf, size_t *len)> writeLogFn;
 
-    RuntimeScanner(dir_config_t *dcfg, RuleParser &parser) : dcfg(dcfg), parser(parser) {}
-    void streamToFile(const stringstream &ss, apr_file_t* fd);
-    int processHeaders(request_rec *rec);
+    RuntimeScanner(RuleParser &parser) : parser(parser) {}
+    void setUri(char *uri);
+    void addHeader(char* key, char* val);
+    void addGETParameter(char* key, char* val);
+    void streamToFile(const stringstream &ss, void *file);
+    int processHeaders();
+    int processBody();
+    void logg(int priority, void *file, const char *fmt, ...);
     void applyRuleAction(const rule_action_t &rule_action);
     void checkLibInjection(MATCH_ZONE zone, const string &name, const string &value);
     void basestrRuleset(MATCH_ZONE zone, const string &name, const string &value,
@@ -95,7 +149,6 @@ public:
                         MATCH_ZONE zone, bool targetName);
     void applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                         const string &value, bool targetName);
-    int processBody();
     void writeLearningLog();
     void writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone, const string &name,
                            const string &value, bool targetName);

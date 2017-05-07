@@ -38,6 +38,16 @@ using std::pair;
 
 static const char *logLevels[] = {"emerg", "alert", "crit", "error", "warn", "notice", "info", "debug", NULL};
 
+// Shell colors
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
+
 typedef struct {
     size_t len = 0;
     u_char *data;
@@ -131,24 +141,15 @@ namespace Util {
     }
 
     vector<string> split(const string &s, char delim);
-
     pair<string, string> splitAtFirst(const string &s, string delim);
-
     std::vector<string>
     parseRawDirective(std::string raw_directive);
-
     vector<int> splitToInt(string &s, char delimiter);
-
     string apacheTimeFmt();
-
     string naxsiTimeFmt();
-
-    string formatLog(int loglevel, char *client);
-
+    string formatLog(int loglevel, const string &clientIp);
     string escapeQuotes(const string &before);
-
     string unescape(const string &s);
 }
-
 
 #endif //MOD_DEFENDER_UTIL_H

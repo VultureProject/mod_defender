@@ -9,6 +9,7 @@
  */
 
 #include "Util.h"
+#include "RuntimeScanner.hpp"
 
 namespace Util {
     vector<string> split(const string &s, char delimiter) {
@@ -122,13 +123,13 @@ namespace Util {
         return string(buffer);
     }
 
-    string formatLog(int loglevel, char *client) {
+    string formatLog(int loglevel, const string &clientIp) {
         stringstream ss;
         ss << "[" << apacheTimeFmt() << "] ";
         ss << "[defender:" << logLevels[loglevel] << "] ";
 //        ss << "[pid " << getpid() << "] ";
-        if (client != NULL)
-            ss << "[client " << client << "] ";
+        if (!clientIp.empty())
+            ss << "[client " << clientIp << "] ";
         return ss.str();
     }
 

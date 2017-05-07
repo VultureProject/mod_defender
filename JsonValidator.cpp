@@ -10,7 +10,6 @@
 
 #include "JsonValidator.hpp"
 #include "RuntimeScanner.hpp"
-#include "mod_defender.hpp"
 #include "RuleParser.h"
 
 bool JsonValidator::jsonForward(json_t &js) {
@@ -89,7 +88,7 @@ bool JsonValidator::jsonArray(json_t &js) {
             js.off++;
             jsonForward(js);
         } else break;
-    } while (rc);
+    } while (true);
     return js.c == ']';
 }
 
@@ -111,7 +110,7 @@ bool JsonValidator::jsonVal(json_t &js) {
             transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
             transform(value.begin(), value.end(), value.begin(), tolower);
             scanner.basestrRuleset(BODY, jsckey, value, bodyRules);
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, scanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
+            scanner.logg(LOG_LVL_DEBUG, scanner.errorLogFile, "JSON '%s' : '%s'\n", (char *) js.ckey.data,
                            (char *) val.data);
         }
         return ret;
@@ -129,8 +128,8 @@ bool JsonValidator::jsonVal(json_t &js) {
         transform(jsckey.begin(), jsckey.end(), jsckey.begin(), tolower);
         transform(value.begin(), value.end(), value.begin(), tolower);
         scanner.basestrRuleset(BODY, jsckey, value, bodyRules);
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, scanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
-                       (char *) val.data);
+        scanner.logg(LOG_LVL_DEBUG, scanner.errorLogFile, "JSON '%s' : '%s'\n", (char *) js.ckey.data,
+                     (char *) val.data);
         return true;
     }
     if (!strncasecmp((const char *) (js.src + js.off), (const char *) "true", 4) ||
@@ -153,7 +152,7 @@ bool JsonValidator::jsonVal(json_t &js) {
         transform(value.begin(), value.end(), value.begin(), tolower);
         scanner.basestrRuleset(BODY, jsckey, value, bodyRules);
 
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, scanner.r, "JSON '%s' : '%s'", (char *) js.ckey.data,
+        scanner.logg(LOG_LVL_DEBUG, scanner.errorLogFile, "JSON '%s' : '%s'\n", (char *) js.ckey.data,
                        (char *) val.data);
         return true;
     }
@@ -262,7 +261,7 @@ void JsonValidator::jsonParse(u_char *src, unsigned long len) {
     if (!jsonObj(js)) {
         scanner.applyRuleMatch(scanner.parser.invalidJson, 1, BODY, "malformed json object", empty,
                                       false);
-        ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, scanner.r, "jsonObj returned error, apply invalid json.");
+        scanner.logg(LOG_LVL_NOTICE, scanner.errorLogFile, "jsonObj returned error, apply invalid json.\n");
         return;
     }
     /* we are now on closing bracket, check for garbage. */

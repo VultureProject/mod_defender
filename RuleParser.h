@@ -20,18 +20,6 @@
 #include "Util.h"
 #include <regex>
 #include <unordered_map>
-#include <httpd.h>
-#include <http_protocol.h>
-#include <http_config.h>
-#include <http_connection.h>
-#include <http_core.h>
-#include <http_log.h>
-#include <apr_strings.h>
-
-// Extra Apache 2.4+ C++ module declaration
-#ifdef APLOG_USE_MODULE
-APLOG_USE_MODULE(defender);
-#endif
 
 //#define DEBUG_CONFIG_MAINRULE
 #ifdef DEBUG_CONFIG_MAINRULE
@@ -309,11 +297,11 @@ public:
     http_rule_t libxssRule;
 
     RuleParser();
-    static unsigned int parseMainRules(vector<string> &ruleLines);
-    void parseCheckRule(vector<pair<string, string>> &rulesArray);
-    unsigned int parseBasicRules(vector<string> &ruleLines);
+    static unsigned int parseMainRules(vector<string> &ruleLines, string errorMsg);
+    void parseCheckRule(vector<pair<string, string>> &rulesArray, string errorMsg);
+    unsigned int parseBasicRules(vector<string> &ruleLines, string errorMsg);
     static void parseAction(string action, rule_action_t& rule_action);
-    static void parseMatchZone(http_rule_t &rule, string &rawMatchZone);
+    static void parseMatchZone(http_rule_t &rule, string &rawMatchZone, stringstream &err);
     static string parseCode(std::regex_constants::error_type etype);
     void generateHashTables();
     void wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uri_idx, int &name_idx);
