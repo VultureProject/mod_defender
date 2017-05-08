@@ -9,10 +9,8 @@
  */
 
 #include "RuntimeScanner.hpp"
-#include "JsonValidator.hpp"
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
-#include "RuleParser.h"
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
@@ -25,9 +23,9 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
         if (targetName)
             errlog << "in name ";
         errlog << "at " << match_zones[zone] << " ";
-        errlog << name;
+        errlog << name.substr(0, 128) << (name.size() > 128 ? "..." : "");
         if (!value.empty())
-            errlog << ":" << value;
+            errlog << ":" << value.substr(0, 256) << (value.size() > 256 ? "..." : "");
         errlog << " ";
         if (rule.action != ALLOW)
             errlog << actions[rule.action] << " ";
@@ -344,8 +342,8 @@ bool RuntimeScanner::contentDispositionParser(unsigned char *str, unsigned char 
         else {
             /* garbage is present ?*/
             logg(LOG_LVL_NOTICE, errorLogFile,
-                          "extra data in content-disposition ? end:%s, str:%s, diff=%ld\n", line_end, str,
-                          line_end - str);
+                 "extra data in content-disposition ? end:%s, str:%s, diff=%ld\n", line_end, str,
+                 line_end - str);
             return false;
         }
     }
@@ -381,7 +379,7 @@ void RuntimeScanner::multipartParse(u_char *src, unsigned long len) {
     if (!parseFormDataBoundary(&boundary, &boundary_len)) {
         if (boundary && boundary_len > 1)
             logg(LOG_LVL_NOTICE, errorLogFile, "XX-POST boundary : (%s) : %ld\n", (const char *) boundary,
-                          boundary_len);
+                 boundary_len);
         applyRuleMatch(parser.uncommonPostBoundary, 1, BODY, "multipart/form-data boundary error", empty, false);
         return;
     }
@@ -668,10 +666,13 @@ void RuntimeScanner::addHeader(char *key, char *val) {
     if (k == "content-length") {
         try {
             contentLength = std::stoul(v);
+            if (contentLength > bodyLimit)
+                bodyLimitExceeded = true;
         }
         catch (std::exception const &e) {
-            logg(LOG_LVL_NOTICE, errorLogFile, "%s cannot convert content-length: \"%s\" to integer\n",
+            logg(LOG_LVL_NOTICE, errorLogFile, "%s cannot convert content-length: '%s' to integer\n",
                  e.what(), v.c_str());
+            bodyLimitExceeded = true;
         }
     }
         // Store Content-Type for further processing
@@ -688,7 +689,7 @@ void RuntimeScanner::addHeader(char *key, char *val) {
     headers.push_back(make_pair(k, v));
 }
 
-void RuntimeScanner::addGETParameter(char* key, char* val) {
+void RuntimeScanner::addGETParameter(char *key, char *val) {
     string k = string(key);
     string v = string(val);
     transform(k.begin(), k.end(), k.begin(), tolower);
@@ -700,7 +701,7 @@ int RuntimeScanner::processHeaders() {
     // Scan headers
     for (pair<string, string> &headerPair : headers)
         basestrRuleset(HEADERS, headerPair.first, headerPair.second, headerRules);
-    
+
     // Scan GET parameters
     for (const pair<string, string> &getPair : get)
         basestrRuleset(ARGS, getPair.first, getPair.second, getRules);
@@ -718,6 +719,12 @@ int RuntimeScanner::processBody() {
     /* Process only if POST / PUT request */
     if (method != METHOD_POST && method != METHOD_PUT)
         return PASS;
+
+    /* Stop if BODY size exceeded the limit */
+    if (bodyLimitExceeded) {
+        applyRuleMatch(parser.bigRequest, 1, BODY, empty, empty, false);
+        return processAction();
+    }
 
     /* Stop if BODY is empty */
     if (body.empty()) {
@@ -778,11 +785,12 @@ void RuntimeScanner::streamToFile(const stringstream &ss, void *file) {
 }
 
 void RuntimeScanner::logg(int priority, void *file, const char *fmt, ...) {
+    if (priority > logLevel)
+        return;
     va_list args;
-    char logbuf[256];
+    char logbuf[256] = {0};
     va_start(args, fmt);
-    if (priority <= logLevel)
-        vsnprintf(logbuf, 256, fmt, args);
+    vsnprintf(logbuf, 256, fmt, args);
     va_end(args);
     size_t loglen = strlen(logbuf);
     writeLogFn(file, logbuf, &loglen);

@@ -31,7 +31,8 @@ before_script:
       <IfModule defender_module>
       Include /etc/defender/core.rules
       </IfModule>" | sudo tee /etc/apache2/mods-available/defender.load
-
+  - sudo apachectl -v
+  - sudo apachectl -M
   - sudo a2enmod defender
   - sudo service apache2 stop
   - >
@@ -45,7 +46,7 @@ before_script:
         Defender On
         MatchLog \${APACHE_LOG_DIR}/defender_match.log
         JSONMatchLog \${APACHE_LOG_DIR}/defender_json_match.log
-        RequestBodyLimit 131072
+        RequestBodyLimit 8388608
         LearningMode Off
         ExtensiveLog Off
         LibinjectionSQL Off
@@ -66,7 +67,9 @@ script:
   - cmake --build build
   - sudo cp build/mod_defender.so /usr/lib/apache2/modules/
   - sudo service apache2 start
-  - bash test.sh localhost
+  - cd tests/
+  - bash core.sh localhost
+  - bash internal.sh localhost
 
 after_script:
   - sudo cat /var/log/apache2/error.log

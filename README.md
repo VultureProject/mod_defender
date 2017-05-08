@@ -1,7 +1,7 @@
-![ModDefender logo](https://i.imgur.com/EIHE0dS.png)  
+# ![ModDefender logo](https://i.imgur.com/EIHE0dS.png)  
 [![travis-ci](https://travis-ci.org/Annihil/mod_defender.svg?branch=master)](https://travis-ci.org/Annihil/mod_defender)  
 Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelist policy  
-It uses the same format as NAXSI configs and thus is fully compatible with NXAPI  
+It uses the same format as NAXSI configs and is thus fully compatible with NXAPI  
 
  - Input
     - MainRule
@@ -61,7 +61,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             # JSON Match log path
             JSONMatchLog ${APACHE_LOG_DIR}/defender_json_match.log
             # Request body limit
-            RequestBodyLimit 131072
+            RequestBodyLimit 8388608
             # Learning mode toggle
             LearningMode On
             # Extensive Learning log toggle
@@ -125,7 +125,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
 
 1. Create its module load file
    	```sh
-    cat << EOF | tee /usr/local/etc/apache24/modules.d/250_mod_defender.rules > /dev/null
+    cat << EOF | tee /usr/local/etc/apache24/modules.d/250_defender.conf > /dev/null
     LoadModule defender_module libexec/apache24/mod_defender.so
     <IfModule defender_module>
     Include etc/defender/core.rules
@@ -148,7 +148,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             # JSON Match log path
             JSONMatchLog /var/log/defender_json_match.log
             # Request body limit
-            RequestBodyLimit 131072
+            RequestBodyLimit 8388608
             # Learning mode toggle
             LearningMode On
             # Extensive Learning log toggle
@@ -166,7 +166,7 @@ It uses the same format as NAXSI configs and thus is fully compatible with NXAPI
             CheckRule "$UPLOAD >= 8" BLOCK
 
             # Whitelists (BasicRule)
-            Include /etc/defender/my_whitelist.rules
+            Include etc/defender/my_whitelist.rules
             </IfModule>
         </Location>
     <VirtualHost>

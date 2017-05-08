@@ -10,7 +10,6 @@
 
 #include "JsonValidator.hpp"
 #include "RuntimeScanner.hpp"
-#include "RuleParser.h"
 
 bool JsonValidator::jsonForward(json_t &js) {
     while ((*(js.src + js.off) == ' ' ||

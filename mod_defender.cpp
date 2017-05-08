@@ -101,9 +101,9 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
                              (dcfg->learning ? " (learning)" : ""), dcfg->loc_path, dcfg->parser->checkRules.size(),
                              basicRuleCount);
                 if (!checkruleErr.empty())
-                    (APLOG_MARK, APLOG_NOTICE, 0, s, "CheckRule parsing error %s", checkruleErr.c_str());
+                    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "CheckRule parsing error %s", checkruleErr.c_str());
                 if (!basicruleErr.empty())
-                    (APLOG_MARK, APLOG_NOTICE, 0, s, "BasicRule parsing error %s", basicruleErr.c_str());
+                    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "BasicRule parsing error %s", basicruleErr.c_str());
                 dcfg->parser->generateHashTables();
             } else {
                 ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "Defender scanner disabled for loc %s",
@@ -146,7 +146,7 @@ static int header_parser(request_rec *r) {
     // Stop if Defender not enabled
     if (!dcfg->defender)
         return DECLINED;
-    
+
     RuntimeScanner *scanner = new RuntimeScanner(*dcfg->parser);
 
     // Register a C function to delete scanner at the end of the request cycle
@@ -161,6 +161,46 @@ static int header_parser(request_rec *r) {
 
     // Register our config data structure for our module for retrieval later as required
     ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
+
+    // Set method
+    if (r->method_number == M_GET)
+        scanner->method = METHOD_GET;
+    else if (r->method_number == M_POST)
+        scanner->method = METHOD_POST;
+    else if (r->method_number == M_PUT)
+        scanner->method = METHOD_PUT;
+
+    // Set logger info
+    scanner->pid = getpid();
+    apr_os_thread_t tid = apr_os_thread_current();
+    unsigned int pid_buffer_len = 16;
+    char pid_buffer[pid_buffer_len];
+    apr_snprintf(pid_buffer, pid_buffer_len, "%pT", &tid);
+    scanner->threadId = string(pid_buffer);
+    scanner->connectionId = r->connection->id;
+    scanner->clientIp = r->useragent_ip;
+    scanner->requestedHost = r->hostname;
+    scanner->serverHostname = r->server->server_hostname;
+    scanner->fullUri = r->unparsed_uri;
+    scanner->protocol = r->protocol;
+    ap_version_t vers;
+    ap_get_server_revision(&vers);
+    scanner->softwareVersion = std::to_string(vers.major) + "." + std::to_string(vers.minor) + "." +
+                               std::to_string(vers.patch);
+    scanner->logLevel = static_cast<LOG_LVL>(r->log->level);
+    if (scanner->logLevel >= APLOG_DEBUG)
+        scanner->logLevel = LOG_LVL_DEBUG;
+    scanner->writeLogFn = write_log;
+    scanner->errorLogFile = r->server->error_log;
+    scanner->learningLogFile = dcfg->matchlog_file;
+    scanner->learningJSONLogFile = dcfg->jsonmatchlog_file;
+    scanner->learning = dcfg->learning;
+    scanner->extensiveLearning = dcfg->extensive;
+
+    // Set runtime modifiers
+    scanner->libinjSQL = dcfg->libinjection_sql;
+    scanner->libinjXSS = dcfg->libinjection_xss;
+    scanner->bodyLimit = dcfg->requestBodyLimit;
 
     // Set the uri path
     scanner->setUri(r->parsed_uri.path);
@@ -178,39 +218,6 @@ static int header_parser(request_rec *r) {
     apr_table_entry_t *getParam = (apr_table_entry_t *) getParams->elts;
     for (int i = 0; i < getParams->nelts; i++)
         scanner->addGETParameter(getParam[i].key, getParam[i].val);
-
-    // Set method
-    if (r->method_number == M_GET)
-        scanner->method = METHOD_GET;
-    else if (r->method_number == M_POST)
-        scanner->method = METHOD_POST;
-    else if (r->method_number == M_PUT)
-        scanner->method = METHOD_PUT;
-
-    // Set logger info
-    scanner->pid = getpid();
-    scanner->threadId = apr_os_thread_current();
-    scanner->connectionId = r->connection->id;
-    scanner->clientIp = r->useragent_ip;
-    scanner->requestedHost = r->hostname;
-    scanner->serverHostname = r->server->server_hostname;
-    scanner->fullUri = r->unparsed_uri;
-    scanner->protocol = r->protocol;
-    ap_version_t vers;
-    ap_get_server_revision(&vers);
-    scanner->softwareVersion = std::to_string(vers.major) + "." + std::to_string(vers.minor) + "." + 
-            std::to_string(vers.patch);
-    scanner->logLevel = static_cast<LOG_LVL>(r->log->level);
-    if (scanner->logLevel >= APLOG_DEBUG)
-        scanner->logLevel = LOG_LVL_DEBUG;
-    scanner->writeLogFn = write_log;
-    scanner->errorLogFile = r->server->error_log;
-    scanner->learningLogFile = dcfg->matchlog_file;
-    scanner->learningJSONLogFile = dcfg->jsonmatchlog_file;
-    scanner->learning = dcfg->learning;
-    scanner->extensiveLearning = dcfg->extensive;
-    scanner->libinjSQL = dcfg->libinjection_sql;
-    scanner->libinjXSS = dcfg->libinjection_xss;
 
     // Run scanner
     int ret = scanner->processHeaders();
@@ -253,92 +260,97 @@ static int fixups(request_rec *r) {
 
     if (scanner->contentLength <= 0 || scanner->contentType == CONTENT_TYPE_UNSUPPORTED)
         return scanner->processBody();
+    int ret;
 
-    // Iterate on the buckets in the brigade to retrieve the body of the request
-    if (scanner->contentLength <= dcfg->requestBodyLimit)
+    // Retrieve the body
+    if (scanner->contentLength <= dcfg->requestBodyLimit) {
+        // Pre-allocate necessary bytes
         scanner->body.reserve(scanner->contentLength);
 
-    // Read the request body
-    bool eos = false;
-    apr_bucket_brigade *bb_in = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-    if (bb_in == NULL) return -1;
-    do {
-        int rc = ap_get_brigade(r->input_filters, bb_in, AP_MODE_SPECULATIVE, APR_BLOCK_READ,
-                                scanner->contentLength);
-        if (rc != APR_SUCCESS) {
-            switch (rc) {
-                case APR_EOF:
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading request body: %s",
-                                  get_apr_error(r->pool, rc));
-                    return -6;
-                case APR_TIMEUP:
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading request body: %s",
-                                  get_apr_error(r->pool, rc));
-                    return -4;
-                case AP_FILTER_ERROR:
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                                  "Error reading request body: HTTP Error 413 - Request entity too large. (Most likely.)");
-                    return -3;
-                case APR_EGENERAL:
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r,
-                                  "Error reading request body: Client went away.");
-                    return -2;
-                default:
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading request body: %s",
-                                  get_apr_error(r->pool, rc));
-                    return -1;
-            }
-        }
-
-        for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb_in);
-             bucket != APR_BRIGADE_SENTINEL(bb_in); bucket = APR_BUCKET_NEXT(bucket)) {
-            if (APR_BUCKET_IS_EOS(bucket))
-                eos = true;
-
-            if (APR_BUCKET_IS_FLUSH(bucket))
-                continue;
-
-            const char *buf;
-            apr_size_t nbytes;
-
-            rc = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ);
+        // Wait for the body to be fully received 
+        apr_bucket_brigade *bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
+        if (bb == NULL)
+            goto read_error_out;
+        unsigned int prev_nr_buckets = 0;
+        do {
+            int rc = ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, LONG_MAX);
             if (rc != APR_SUCCESS) {
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Failed reading input / bucket (%d): %s", rc,
-                              get_apr_error(r->pool, rc));
-                return -1;
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading body: %s", get_apr_error(r->pool, rc));
+                goto read_error_out;
             }
 
-            if (scanner->body.length() + nbytes > scanner->contentLength) {
-                eos = true;
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Too much POST data");
+            unsigned int nr_buckets = 0;
+            // Iterate over buckets
+            for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb);
+                 bucket != APR_BRIGADE_SENTINEL(bb); bucket = APR_BUCKET_NEXT(bucket)) {
+                // Stop if we reach the EOS bucket
+                if (APR_BUCKET_IS_EOS(bucket))
+                    break;
+
+                // Ignore non data buckets
+                if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket))
+                    continue;
+
+                nr_buckets++;
+                // Skip already copied buckets
+                if (nr_buckets <= prev_nr_buckets)
+                    continue;
+
+                const char *buf;
+                apr_size_t nbytes;
+                int rv = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ);
+                if (rv != APR_SUCCESS) {
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Failed reading input / bucket: %s",
+                                  get_apr_error(r->pool, rv));
+                    goto read_error_out;
+                }
+
+//                cerr << "bucket #" << nr_buckets - 1 << " received, nbytes: " << nbytes << ", total len: " 
+//                     << scanner->body.length() + nbytes << endl;
+
+                // More bytes in the BODY than specified in the content-length
+                if (scanner->body.length() + nbytes > scanner->contentLength) {
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Too much POST data: received body of %lu bytes but "
+                            "got content-length: %lu", scanner->body.length() + nbytes, scanner->contentLength);
+                    goto read_error_out;
+                }
+
+                // More bytes in the BODY than specified by the allowed body limit
+                if (scanner->body.length() + nbytes > dcfg->requestBodyLimit) {
+                    scanner->bodyLimitExceeded = true;
+                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Body limit exceeded (%lu)", dcfg->requestBodyLimit);
+                    break;
+                }
+
+                scanner->body.append(buf, nbytes);
+            }
+            prev_nr_buckets = nr_buckets;
+
+            if (scanner->body.length() == scanner->contentLength)
                 break;
-            }
 
-            scanner->body += string(buf, nbytes);
+            apr_brigade_cleanup(bb);
+            apr_sleep(1000);
+        } while (true);
+    }
 
-            if (scanner->body.length() > dcfg->requestBodyLimit) {
-                scanner->applyRuleMatch(dcfg->parser->bigRequest, 1, BODY, empty, empty, false);
-                return -1;
-            }
-
-            if (scanner->body.length() == scanner->contentLength) {
-                eos = true;
-                break;
-            }
-        }
-
-        apr_brigade_cleanup(bb_in);
-    } while (!eos);
-//    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "post data (%lu): %s", scanner->body.length(),
-//                  scanner->body.c_str());
+//    cerr << "[pid " << getpid() << "] read " << scanner->body.length() << " bytes, ";
+//    cerr << "content-length: " << scanner->contentLength << endl;
+//    cerr << "body: " << scanner->body << endl;
 
     // Run scanner
-    int ret = scanner->processBody();
+    ret = scanner->processBody();
 
     if (dcfg->useenv)
         ret = pass_in_env(r, scanner);
 
+//    cerr << "[pid " << getpid() << "] body (" << scanner->body.length() << ") scanned" << endl;
+
     return ret;
+
+    read_error_out:
+    if (dcfg->useenv) return DECLINED;
+    return HTTP_INTERNAL_SERVER_ERROR;
 }
 
 /* Apache callback to register our hooks.
@@ -457,20 +469,20 @@ static const char *set_useenv_flag(cmd_parms *, void *cfg, int flag) {
     return NULL;
 }
 
-static const char *set_mainrules(cmd_parms *cmd, void *, const char *line) {
-    tmpMainRules.push_back(apr_pstrdup(cmd->pool, line));
+static const char *set_mainrules(cmd_parms *, void *, const char *line) {
+    tmpMainRules.push_back(string(line));
     return NULL;
 }
 
-static const char *set_checkrules(cmd_parms *cmd, void *cfg, const char *arg1, const char *arg2) {
+static const char *set_checkrules(cmd_parms *, void *cfg, const char *arg1, const char *arg2) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
-    dcfg->tmpCheckRules.push_back(std::make_pair(apr_pstrdup(cmd->pool, arg1), apr_pstrdup(cmd->pool, arg2)));
+    dcfg->tmpCheckRules.push_back(std::make_pair(string(arg1), string(arg2)));
     return NULL;
 }
 
-static const char *set_basicrules(cmd_parms *cmd, void *cfg, const char *line) {
+static const char *set_basicrules(cmd_parms *, void *cfg, const char *line) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
-    dcfg->tmpBasicRules.push_back(apr_pstrdup(cmd->pool, line));
+    dcfg->tmpBasicRules.push_back(string(line));
     return NULL;
 }
 

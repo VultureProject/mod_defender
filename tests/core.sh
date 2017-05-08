@@ -1,45 +1,6 @@
 #!/bin/bash
 
-if [ "$#" -ne 1 ]; then
-	echo "Usage: $0 <host>"
-	exit 0
-fi
-HOST=$1
-
-PASS_MESSAGE="[ \033[0;32mPASS\033[0m ]"
-FAIL_MESSAGE="[ \033[0;31mFAIL\033[0m ]"
-
-check_status_code() {
-	if ([ $2 == 0 ] && ([ $1 == 200 ] || [ $1 == 404 ])) ||
-		([ $2 == 1 ] && [ $1 == 403 ]) &&
-		[ $1 -lt 500 ]
-	then
-		printf "$PASS_MESSAGE"
-		return 1
-	else
-		printf "$FAIL_MESSAGE"
-		return 0
-	fi
-}
-
-url_encode() {
-	local string="$1"
-	local strlen=${#string}
-	local encoded=""
-	local pos c o
-
-	for ((pos=0; pos<strlen; pos++)); do
-		c=${string:$pos:1}
-		case "$c" in
-			[-_.~a-zA-Z0-9] )
-				o="$c";;
-			* )
-				printf -v o '%%%02x' "'$c"
-		esac
-		encoded+="$o"
-	done
-	echo "$encoded"
-}
+source ./test.sh
 
 declare -a tests=(
 	# " -d a=blah" 0
@@ -116,8 +77,8 @@ test_passed=0
 for ((i=0; i<$tests_size; i+=2)); do
 	req="curl $HOST/${tests[$i]}"
 	expected_action=${tests[$i+1]}
-	status_code=`$req -s -o /dev/null -w %{http_code}`
-	test_msg=`check_status_code $status_code $expected_action`
+	status_code=`$req $curl_ret`
+	test_msg=`check_block $status_code $expected_action`
 	test_passed=$((test_passed + $?))
 	printf "%-60s %s\n" "$req" "$status_code  $test_msg"
 done

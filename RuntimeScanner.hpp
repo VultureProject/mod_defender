@@ -102,10 +102,12 @@ public:
     CONTENT_TYPE contentType = CONTENT_TYPE_UNSUPPORTED;
     unsigned long contentLength = 0;
     string body;
+    unsigned long bodyLimit = 0;
+    bool bodyLimitExceeded = false;
     
     int pid = 0;
     long connectionId = 0;
-    long threadId = 0;
+    string threadId;
     string clientIp;
     string requestedHost;
     string serverHostname;
