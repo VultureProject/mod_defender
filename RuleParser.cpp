@@ -50,11 +50,11 @@ RuleParser::RuleParser() {
 
     emptyPostBody.id = 16;
     emptyPostBody.logMsg = "Empty post body";
-    invalidJson.action = BLOCK;
+    emptyPostBody.action = BLOCK;
 
     libsqliRule.id = 17;
     libsqliRule.scores.emplace_back("$LIBINJECTION_SQL", 8);
-    invalidJson.action = BLOCK;
+    libsqliRule.action = BLOCK;
 
     libxssRule.id = 18;
     libxssRule.logMsg = "Libinjection XSS";
