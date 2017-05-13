@@ -74,6 +74,11 @@ enum CONTENT_TYPE {
     CONTENT_TYPE_APP_JSON, // application/json
 };
 
+enum TRANSFER_ENCODING {
+    TRANSFER_ENCODING_UNSUPPORTED = 0,
+    TRANSFER_ENCOING_CHUNKED
+};
+
 enum LOG_LVL {
     LOG_LVL_EMERG = 0,
     LOG_LVL_ALERT,
@@ -100,7 +105,10 @@ private:
 public:
     METHOD method = UNSUPPORTED_METHOD;
     CONTENT_TYPE contentType = CONTENT_TYPE_UNSUPPORTED;
+    TRANSFER_ENCODING transferEncoding = TRANSFER_ENCODING_UNSUPPORTED;
+    bool transferEncodingProvided = false;
     unsigned long contentLength = 0;
+    bool contentLengthProvided = false;
     string body;
     unsigned long bodyLimit = 0;
     bool bodyLimitExceeded = false;

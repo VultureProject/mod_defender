@@ -242,13 +242,14 @@ static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
  * This is a RUN_ALL HOOK.
  */
 static int fixups(request_rec *r) {
+    int ret;
     dir_config_t *dcfg = (dir_config_t *) ap_get_module_config(r->per_dir_config, &defender_module);
     // Stop if Defender not enabled
     if (!dcfg->defender)
         return DECLINED;
 
     // Stop if this is not the main request
-    if ((r->main != NULL) || (r->prev != NULL))
+    if (r->main != NULL || r->prev != NULL)
         return DECLINED;
 
     // Process only if POST / PUT request
@@ -258,81 +259,90 @@ static int fixups(request_rec *r) {
     defender_config_t *defc = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
     RuntimeScanner *scanner = defc->vpRuntimeScanner;
 
-    if (scanner->contentLength <= 0 || scanner->contentType == CONTENT_TYPE_UNSUPPORTED)
+    if (scanner->contentLengthProvided && scanner->contentLength == 0)
         return scanner->processBody();
-    int ret;
+
+    if (scanner->contentType == CONTENT_TYPE_UNSUPPORTED)
+        return scanner->processBody();
+
+    if (scanner->bodyLimitExceeded)
+        return scanner->processBody();
+
+    if (!scanner->contentLengthProvided)
+        return HTTP_NOT_IMPLEMENTED;
+
+    if (scanner->transferEncodingProvided /*&& scanner->transferEncoding == TRANSFER_ENCODING_UNSUPPORTED*/)
+        return HTTP_NOT_IMPLEMENTED;
 
     // Retrieve the body
-    if (scanner->contentLength <= dcfg->requestBodyLimit) {
-        // Pre-allocate necessary bytes
-        scanner->body.reserve(scanner->contentLength);
+    // Pre-allocate necessary bytes
+    scanner->body.reserve(scanner->contentLength);
 
-        // Wait for the body to be fully received 
-        apr_bucket_brigade *bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-        if (bb == NULL)
+    // Wait for the body to be fully received 
+    apr_bucket_brigade *bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
+    unsigned int prev_nr_buckets = 0;
+    if (bb == NULL)
+        goto read_error_out;
+    do {
+        int rc = ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, LONG_MAX);
+        if (rc != APR_SUCCESS) {
+            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading body: %s", get_apr_error(r->pool, rc));
             goto read_error_out;
-        unsigned int prev_nr_buckets = 0;
-        do {
-            int rc = ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, LONG_MAX);
-            if (rc != APR_SUCCESS) {
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading body: %s", get_apr_error(r->pool, rc));
+        }
+
+        unsigned int nr_buckets = 0;
+        // Iterate over buckets
+        for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb);
+             bucket != APR_BRIGADE_SENTINEL(bb); bucket = APR_BUCKET_NEXT(bucket)) {
+            // Stop if we reach the EOS bucket
+            if (APR_BUCKET_IS_EOS(bucket))
+                break;
+
+            // Ignore non data buckets
+            if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket))
+                continue;
+
+            nr_buckets++;
+            // Skip already copied buckets
+            if (nr_buckets <= prev_nr_buckets)
+                continue;
+
+            const char *buf;
+            apr_size_t nbytes;
+            int rv = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ);
+            if (rv != APR_SUCCESS) {
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Failed reading input / bucket: %s",
+                              get_apr_error(r->pool, rv));
                 goto read_error_out;
             }
 
-            unsigned int nr_buckets = 0;
-            // Iterate over buckets
-            for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb);
-                 bucket != APR_BRIGADE_SENTINEL(bb); bucket = APR_BUCKET_NEXT(bucket)) {
-                // Stop if we reach the EOS bucket
-                if (APR_BUCKET_IS_EOS(bucket))
-                    break;
+//            cerr << "bucket #" << nr_buckets - 1 << " received, nbytes: " << nbytes << ", total len: "
+//                 << scanner->body.length() + nbytes << endl;
 
-                // Ignore non data buckets
-                if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket))
-                    continue;
-
-                nr_buckets++;
-                // Skip already copied buckets
-                if (nr_buckets <= prev_nr_buckets)
-                    continue;
-
-                const char *buf;
-                apr_size_t nbytes;
-                int rv = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ);
-                if (rv != APR_SUCCESS) {
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Failed reading input / bucket: %s",
-                                  get_apr_error(r->pool, rv));
-                    goto read_error_out;
-                }
-
-//                cerr << "bucket #" << nr_buckets - 1 << " received, nbytes: " << nbytes << ", total len: " 
-//                     << scanner->body.length() + nbytes << endl;
-
-                // More bytes in the BODY than specified in the content-length
-                if (scanner->body.length() + nbytes > scanner->contentLength) {
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Too much POST data: received body of %lu bytes but "
-                            "got content-length: %lu", scanner->body.length() + nbytes, scanner->contentLength);
-                    goto read_error_out;
-                }
-
-                // More bytes in the BODY than specified by the allowed body limit
-                if (scanner->body.length() + nbytes > dcfg->requestBodyLimit) {
-                    scanner->bodyLimitExceeded = true;
-                    ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Body limit exceeded (%lu)", dcfg->requestBodyLimit);
-                    break;
-                }
-
-                scanner->body.append(buf, nbytes);
+            // More bytes in the BODY than specified in the content-length
+            if (scanner->body.length() + nbytes > scanner->contentLength) {
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Too much POST data: received body of %lu bytes but "
+                        "got content-length: %lu", scanner->body.length() + nbytes, scanner->contentLength);
+                goto read_error_out;
             }
-            prev_nr_buckets = nr_buckets;
 
-            if (scanner->body.length() == scanner->contentLength)
+            // More bytes in the BODY than specified by the allowed body limit
+            if (scanner->body.length() + nbytes > dcfg->requestBodyLimit) {
+                scanner->bodyLimitExceeded = true;
+                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Body limit exceeded (%lu)", dcfg->requestBodyLimit);
                 break;
+            }
 
-            apr_brigade_cleanup(bb);
-            apr_sleep(1000);
-        } while (true);
-    }
+            scanner->body.append(buf, nbytes);
+        }
+        prev_nr_buckets = nr_buckets;
+
+        if (scanner->body.length() == scanner->contentLength)
+            break;
+
+        apr_brigade_cleanup(bb);
+        apr_sleep(1000);
+    } while (true);
 
 //    cerr << "[pid " << getpid() << "] read " << scanner->body.length() << " bytes, ";
 //    cerr << "content-length: " << scanner->contentLength << endl;

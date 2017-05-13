@@ -664,6 +664,7 @@ void RuntimeScanner::addHeader(char *key, char *val) {
     transform(v.begin(), v.end(), v.begin(), tolower);
     // Retrieve Content-Length
     if (k == "content-length") {
+        contentLengthProvided = true;
         try {
             contentLength = std::stoul(v);
             if (contentLength > bodyLimit)
@@ -684,6 +685,13 @@ void RuntimeScanner::addHeader(char *key, char *val) {
             rawContentType = string(val); // important: need to keep the case!
         } else if (v == "application/json") {
             contentType = CONTENT_TYPE_APP_JSON;
+        }
+    }
+        // Retrieve Transfer-encoding
+    else if (k == "transfer-encoding") {
+        transferEncodingProvided = true;
+        if (v == "chunked") {
+            transferEncoding = TRANSFER_ENCOING_CHUNKED;
         }
     }
     headers.push_back(make_pair(k, v));
