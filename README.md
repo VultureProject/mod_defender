@@ -1,15 +1,16 @@
 # ![ModDefender logo](https://i.imgur.com/EIHE0dS.png)  
 [![travis-ci](https://travis-ci.org/Annihil/mod_defender.svg?branch=master)](https://travis-ci.org/Annihil/mod_defender)  
 Mod Defender is an Apache2 module aiming to block attacks thanks to a whitelist policy  
-It uses the same format as NAXSI configs and is thus fully compatible with NXAPI  
+It is an almost complete replication of [NAXSI](https://github.com/nbs-system/naxsi), which is for Nginx  
+It uses the same configs format and is thus fully compatible with [NXAPI/NXTOOL](https://github.com/nbs-system/naxsi/tree/master/nxapi)  
 
  - Input
-    - MainRule
-    - BasicRule
-    - CheckRule
+    - [MainRule](https://github.com/nbs-system/naxsi/blob/master/naxsi_config/naxsi_core.rules)
+    - [BasicRule](https://github.com/nbs-system/naxsi/wiki/whitelists-bnf)
+    - [CheckRule](https://github.com/nbs-system/naxsi/wiki/checkrules-bnf)
  - Output
-    - Learning log
-    - Extensive learning log
+    - [Learning log](https://github.com/nbs-system/naxsi/wiki/naxsilogs#naxsi_fmt)
+    - [Extensive learning log](https://github.com/nbs-system/naxsi/wiki/naxsilogs#naxsi_exlog)
 
 ## Required packages
 * apache2 dev package to provide Apache2 headers
@@ -204,3 +205,6 @@ CheckRule "..."
 # Whitelist rules
 BasicRule "..."
 ```
+
+## Credits
+[NAXSI's team](https://github.com/orgs/nbs-system/people) from nbs-system
