@@ -36,9 +36,6 @@ void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMat
     }
     applyRuleAction(rule.action);
 
-    if (!learning)
-        return;
-
     if (rulesMatchedCount > 0)
         matchVars << "&";
     matchVars << "zone" << rulesMatchedCount << "=" << match_zones[zone] << "&";
@@ -808,7 +805,7 @@ void RuntimeScanner::logg(int priority, void *file, const char *fmt, ...) {
  * YYYY/MM/DD HH:MM:SS [LEVEL] PID#TID: *CID MESSAGE
  */
 void RuntimeScanner::writeLearningLog() {
-    if (!learning || rulesMatchedCount == 0)
+    if (rulesMatchedCount == 0)
         return;
 
     stringstream learninglog;
@@ -883,7 +880,7 @@ void RuntimeScanner::writeExtensiveLog(const http_rule_t &rule, MATCH_ZONE zone,
 }
 
 void RuntimeScanner::writeJSONLearningLog() {
-    if (!learning || rulesMatchedCount == 0)
+    if (rulesMatchedCount == 0)
         return;
 
     stringstream jsonlog;
