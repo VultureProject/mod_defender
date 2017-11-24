@@ -116,12 +116,14 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
 }
 
 static int pass_in_env(request_rec *r, RuntimeScanner *scanner) {
-    if ((scanner->block && !scanner->learning) || scanner->drop)
-        apr_table_set(r->subprocess_env, "defender_action", "block");
-    for (const auto &match : scanner->matchScores) {
-        apr_table_set(r->subprocess_env, apr_psprintf(r->pool, "defender_%s", match.first.c_str()),
-                      apr_itoa(r->pool, match.second));
+    // if ((scanner->block && !scanner->learning) || scanner->drop) {  // NOT USING BLOCK OR DROP IN VULTURE
+    if (!scanner->learning) {
+        for (const auto &match : scanner->matchScores) {
+            apr_table_set(r->subprocess_env, apr_psprintf(r->pool, "defender_%s", match.first.c_str()),
+                          apr_itoa(r->pool, match.second));
+        }
     }
+
     return DECLINED;
 }
 

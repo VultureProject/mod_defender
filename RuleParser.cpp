@@ -597,14 +597,16 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
     /* Check if the rule is part of disabled rules for this location */
     for (const http_rule_t &disabledRule : disabled_rules) {
         if (checkIds(rule.id, disabledRule.wlIds)) { // Is rule disabled ?
-            if (!disabledRule.br.active) { // if it doesn't specify zone, skip zone-check
-                continue;
-            }
-
             /* If rule target nothing, it's whitelisted everywhere */
             if (!(disabledRule.br.argsMz || disabledRule.br.headersMz ||
                   disabledRule.br.bodyMz || disabledRule.br.urlMz)) {
+                DEBUG_CONF_WL("rule " << rule.id << " not targeting any zone, whitelisted everywhere");
                 return true;
+            }
+
+            if (!disabledRule.br.active) { // if it doesn't specify zone, skip zone-check
+                DEBUG_CONF_WL("rule " << rule.id << " not targeting any zone, skipping zone-check");
+                continue;
             }
 
             /* if exc is in name, but rule is not specificaly disabled for name (and targets a zone)  */
