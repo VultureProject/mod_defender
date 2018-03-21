@@ -289,7 +289,7 @@ static int fixups(request_rec *r) {
     if (bb == NULL)
         goto read_error_out;
     do {
-        if( (status=ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, READ_BLOCKSIZE))
+        if( (status=ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, READ_BLOCKSIZE))
            != APR_SUCCESS ) {
             ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Error reading body: %s", get_apr_error(r->pool, status));
             goto read_error_out;
