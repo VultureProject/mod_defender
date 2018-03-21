@@ -283,47 +283,45 @@ static int fixups(request_rec *r) {
     // Wait for the body to be fully received 
     apr_bucket_brigade *bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
     unsigned int prev_nr_buckets = 0;
+    int seen_eos = 0;
+    apr_status_t status;
+
     if (bb == NULL)
         goto read_error_out;
     do {
-        int rc = ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, LONG_MAX);
-        if (rc != APR_SUCCESS) {
-            ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Error reading body: %s", get_apr_error(r->pool, rc));
+        if( (status=ap_get_brigade(r->input_filters, bb, AP_MODE_READBYTES, APR_BLOCK_READ, READ_BLOCKSIZE))
+           != APR_SUCCESS ) {
+            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Error reading body: %s", get_apr_error(r->pool, status));
             goto read_error_out;
         }
 
-        unsigned int nr_buckets = 0;
         // Iterate over buckets
-        for (apr_bucket *bucket = APR_BRIGADE_FIRST(bb);
+        apr_bucket *bucket = NULL;
+        for (bucket=APR_BRIGADE_FIRST(bb);
              bucket != APR_BRIGADE_SENTINEL(bb); bucket = APR_BUCKET_NEXT(bucket)) {
             // Stop if we reach the EOS bucket
-            if (APR_BUCKET_IS_EOS(bucket))
+            if (APR_BUCKET_IS_EOS(bucket)) {
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "EOS bucket reached.");
+                seen_eos = 1;
                 break;
+            }
 
             // Ignore non data buckets
             if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket))
                 continue;
 
-            nr_buckets++;
-            // Skip already copied buckets
-            if (nr_buckets <= prev_nr_buckets)
-                continue;
-
             const char *buf;
             apr_size_t nbytes;
-            int rv = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ);
-            if (rv != APR_SUCCESS) {
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Failed reading input / bucket: %s",
-                              get_apr_error(r->pool, rv));
+
+            if( (status=apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ)) != APR_SUCCESS ) {
+                ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "Failed reading input / bucket: %s",
+                              get_apr_error(r->pool, status));
                 goto read_error_out;
             }
 
-//            cerr << "bucket #" << nr_buckets - 1 << " received, nbytes: " << nbytes << ", total len: "
-//                 << scanner->body.length() + nbytes << endl;
-
             // More bytes in the BODY than specified in the content-length
             if (scanner->body.length() + nbytes > scanner->contentLength) {
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Too much POST data: received body of %lu bytes but "
+                ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Too much POST data: received body of %lu bytes but "
                         "got content-length: %lu", scanner->body.length() + nbytes, scanner->contentLength);
                 goto read_error_out;
             }
@@ -331,20 +329,18 @@ static int fixups(request_rec *r) {
             // More bytes in the BODY than specified by the allowed body limit
             if (scanner->body.length() + nbytes > dcfg->requestBodyLimit) {
                 scanner->bodyLimitExceeded = true;
-                ap_log_rerror(APLOG_MARK, APLOG_NOTICE, 0, r, "Body limit exceeded (%lu)", dcfg->requestBodyLimit);
+                ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Body limit exceeded (%lu)", dcfg->requestBodyLimit);
                 break;
             }
 
             scanner->body.append(buf, nbytes);
         }
-        prev_nr_buckets = nr_buckets;
-
-        if (scanner->body.length() == scanner->contentLength)
+        if (scanner->body.length() >= scanner->contentLength)
             break;
 
         apr_brigade_cleanup(bb);
-        apr_sleep(1000);
-    } while (true);
+
+    } while( !scanner->bodyLimitExceeded && !seen_eos );
 
 //    cerr << "[pid " << getpid() << "] read " << scanner->body.length() << " bytes, ";
 //    cerr << "content-length: " << scanner->contentLength << endl;
