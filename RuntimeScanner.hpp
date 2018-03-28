@@ -40,6 +40,8 @@
 
 #define PASS -1
 #define STOP 403
+/* used for reading input blocks */
+#define READ_BLOCKSIZE 2048
 
 using namespace Util;
 using std::pair;
