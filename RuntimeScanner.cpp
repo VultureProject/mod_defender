@@ -694,7 +694,7 @@ void RuntimeScanner::addHeader(char *key, char *val) {
     else if (k == "transfer-encoding") {
         transferEncodingProvided = true;
         if (v == "chunked") {
-            transferEncoding = TRANSFER_ENCOING_CHUNKED;
+            transferEncoding = TRANSFER_ENCODING_CHUNKED;
         }
     }
     headers.push_back(make_pair(k, v));
