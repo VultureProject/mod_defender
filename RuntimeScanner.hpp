@@ -40,6 +40,8 @@
 
 #define PASS -1
 #define STOP 403
+/* used for reading input blocks */
+#define READ_BLOCKSIZE 2048
 
 using namespace Util;
 using std::pair;
@@ -78,7 +80,7 @@ enum CONTENT_TYPE {
 
 enum TRANSFER_ENCODING {
     TRANSFER_ENCODING_UNSUPPORTED = 0,
-    TRANSFER_ENCOING_CHUNKED
+    TRANSFER_ENCODING_CHUNKED
 };
 
 enum LOG_LVL {

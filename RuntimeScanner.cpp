@@ -694,7 +694,7 @@ void RuntimeScanner::addHeader(char *key, char *val) {
     else if (k == "transfer-encoding") {
         transferEncodingProvided = true;
         if (v == "chunked") {
-            transferEncoding = TRANSFER_ENCOING_CHUNKED;
+            transferEncoding = TRANSFER_ENCODING_CHUNKED;
         }
     }
     headers.push_back(make_pair(k, v));
@@ -888,6 +888,7 @@ void RuntimeScanner::writeJSONLearningLog() {
         return;
 
     stringstream jsonlog;
+    stringstream unique_data;
     std::time_t result = std::time(nullptr);
     std::asctime(std::localtime(&result));
     jsonlog << "{\"time\":";
@@ -910,20 +911,25 @@ void RuntimeScanner::writeJSONLearningLog() {
     for (const auto &matchInfoPair : matchInfos) {
         const match_info_t &matchInfo = matchInfoPair.second;
         jsonlog << "{\"zone\":\"" << matchInfo.zone << "\",";
+        unique_data << "" << matchInfo.zone;
 
         jsonlog << "\"id\":[";
-        for (const unsigned long &ruleId : matchInfo.ruleId)
+        for (const unsigned long &ruleId : matchInfo.ruleId) {
             jsonlog << ruleId << ",";
+            unique_data << ruleId;
+        }
         jsonlog.seekp(-1, std::ios_base::end);
         jsonlog << "]";
 
-        if (!matchInfo.varname.empty())
+        if (!matchInfo.varname.empty()) {
             jsonlog << ",\"var_name\":\"" << escapeQuotes(matchInfo.varname) << "\"";
+            unique_data << "" << escapeQuotes(matchInfo.varname);
+        }
         if (extensiveLearning && !matchInfo.content.empty())
             jsonlog << ",\"content\":\"" << escapeQuotes(matchInfo.content) << "\"";
         jsonlog << "},";
     }
-    
+
     if (matchInfos.size() > 0) jsonlog.seekp(-1, std::ios_base::end);
     jsonlog << "],";
 
@@ -931,7 +937,9 @@ void RuntimeScanner::writeJSONLearningLog() {
     jsonlog << "\"server\":\"" << serverHostname << "\",";
     jsonlog << "\"method\":\"" << methods[method] << "\",";
     jsonlog << "\"protocol\":\"" << protocol << "\",";
-    jsonlog << "\"unparsed_uri\":\"" << fullUri << "\"";
+    jsonlog << "\"unparsed_uri\":\"" << fullUri << "\",";
+    unique_data << "" << uri;
+    jsonlog << "\"context_id\":\"" << unique_data.str() << "\"";
 
     jsonlog << "}" << endl;
     streamToFile(jsonlog, learningJSONLogFile);
