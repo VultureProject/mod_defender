@@ -21,6 +21,8 @@
 APLOG_USE_MODULE(defender);
 #endif
 
+#define MAX_BB_SIZE 0x7FFFFFFF
+
 /*
  * Per-directory configuration structure
  */
@@ -276,6 +278,12 @@ static int fixups(request_rec *r) {
     if (scanner->transferEncodingProvided /*&& scanner->transferEncoding == TRANSFER_ENCODING_UNSUPPORTED*/)
         return HTTP_NOT_IMPLEMENTED;
 
+    if( scanner->contentLength >= MAX_BB_SIZE ) {
+        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Content-Length '%lu' is greater than process limit : %d",
+                      scanner->contentLength, MAX_BB_SIZE);
+        return DECLINED;
+    }
+
     // Retrieve the body
     // Pre-allocate necessary bytes
     scanner->body.reserve(scanner->contentLength);
@@ -285,19 +293,21 @@ static int fixups(request_rec *r) {
     unsigned int prev_nr_buckets = 0;
     int seen_eos = 0;
     apr_status_t status;
+    apr_bucket *bucket = NULL;
+    apr_size_t ttbytes = 0;
 
     if (bb == NULL)
         goto read_error_out;
     do {
-        if( (status=ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, READ_BLOCKSIZE))
-           != APR_SUCCESS ) {
-            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Error reading body: %s", get_apr_error(r->pool, status));
+        if( (status = ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, MAX_BB_SIZE) )
+            != APR_SUCCESS) {
+            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Error reading body: %s", get_apr_error(r->pool, status));
             goto read_error_out;
         }
 
+        unsigned int nr_buckets = 0;
         // Iterate over buckets
-        apr_bucket *bucket = NULL;
-        for (bucket=APR_BRIGADE_FIRST(bb);
+        for (bucket = APR_BRIGADE_FIRST(bb);
              bucket != APR_BRIGADE_SENTINEL(bb); bucket = APR_BUCKET_NEXT(bucket)) {
             // Stop if we reach the EOS bucket
             if (APR_BUCKET_IS_EOS(bucket)) {
@@ -307,17 +317,30 @@ static int fixups(request_rec *r) {
             }
 
             // Ignore non data buckets
-            if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket))
+            if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket)) {
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Bucket is METADATA or FLUSH.");
                 continue;
+            }
+
+            nr_buckets++;
+            // Skip already copied buckets
+            if (nr_buckets <= prev_nr_buckets) {
+                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Skip already copied bucket: %u / %u.", nr_buckets,
+                              prev_nr_buckets);
+                continue;
+            }
 
             const char *buf;
-            apr_size_t nbytes;
+            apr_size_t nbytes = MAX_BB_SIZE;
 
-            if( (status=apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ)) != APR_SUCCESS ) {
-                ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "Failed reading input / bucket: %s",
+            if ((status = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ)) != APR_SUCCESS) {
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Failed reading input / bucket: %s",
                               get_apr_error(r->pool, status));
                 goto read_error_out;
             }
+            ttbytes += nbytes;
+            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Bucket successfully read: %lu bytes. Total length=%lu.",
+                          nbytes, ttbytes);
 
             // More bytes in the BODY than specified in the content-length
             if (scanner->body.length() + nbytes > scanner->contentLength) {
@@ -335,8 +358,12 @@ static int fixups(request_rec *r) {
 
             scanner->body.append(buf, nbytes);
         }
-        if (scanner->body.length() >= scanner->contentLength)
+        prev_nr_buckets = nr_buckets;
+
+        if (scanner->body.length() == scanner->contentLength) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Content-Length %lu reached.", scanner->contentLength);
             break;
+        }
 
         apr_brigade_cleanup(bb);
 
@@ -345,6 +372,8 @@ static int fixups(request_rec *r) {
 //    cerr << "[pid " << getpid() << "] read " << scanner->body.length() << " bytes, ";
 //    cerr << "content-length: " << scanner->contentLength << endl;
 //    cerr << "body: " << scanner->body << endl;
+
+    ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "Brigades processing completed. Process body.");
 
     // Run scanner
     ret = scanner->processBody();
@@ -357,8 +386,23 @@ static int fixups(request_rec *r) {
     return ret;
 
     read_error_out:
-    if (dcfg->useenv) return DECLINED;
-    return HTTP_INTERNAL_SERVER_ERROR;
+        switch(status) {
+            case APR_EOF : /* EOF when reading request body. */
+                r->connection->keepalive = AP_CONN_CLOSE;
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "HTTP_BAD_REQUEST");
+                return HTTP_BAD_REQUEST;
+            case APR_TIMEUP : /* Timeout. */
+                r->connection->keepalive = AP_CONN_CLOSE;
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "HTTP_REQUEST_TIME_OUT.");
+                return HTTP_REQUEST_TIME_OUT;
+            case AP_FILTER_ERROR :
+            case APR_EGENERAL :
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "DECLINED.");
+                return DECLINED;
+            default :
+                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "HTTP_INTERNAL_SERVER_ERROR.");
+                return HTTP_INTERNAL_SERVER_ERROR;
+        }
 }
 
 /* Apache callback to register our hooks.
