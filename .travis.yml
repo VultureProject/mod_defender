@@ -32,7 +32,6 @@ matrix:
       compiler: "gcc"
       env: RUN="basic.sh"
 
-  include:
     - os: linux
       compiler: "gcc"
       env: RUN="https.sh"
