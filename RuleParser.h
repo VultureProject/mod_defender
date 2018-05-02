@@ -265,7 +265,7 @@ class RuleParser {
 private:
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
     bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, MATCH_ZONE zone, bool targetName);
-    bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
+    bool isWhitelistAdapted(whitelist_rule_t &wlrule, MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
 
 public:
