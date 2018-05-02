@@ -5,7 +5,6 @@ set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules")
 
-#set(GCC_WARNINGS_FLAGS)
 set(CMAKE_CXX_FLAGS "-W -Wall -Wextra")
 
 message("FLAGS = ${CMAKE_CXX_FLAGS}")
