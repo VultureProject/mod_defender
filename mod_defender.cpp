@@ -15,41 +15,14 @@
 #include <apr_strings.h>
 #include <util_script.h>
 #include "RuntimeScanner.hpp"
+#include "mod_defender.hpp"
 
 // Extra Apache 2.4+ C++ module declaration
 #ifdef APLOG_USE_MODULE
 APLOG_USE_MODULE(defender);
 #endif
 
-#define MAX_BB_SIZE 0x7FFFFFFF
-
-/*
- * Per-directory configuration structure
- */
-typedef struct {
-    RuleParser *parser;
-    vector<pair<string, string>> tmpCheckRules;
-    vector<string> tmpBasicRules;
-    char *loc_path;
-    apr_file_t *matchlog_file;
-    apr_file_t *jsonmatchlog_file;
-    unsigned long requestBodyLimit;
-    bool libinjection_sql;
-    bool libinjection_xss;
-    bool defender;
-    bool learning;
-    bool extensive;
-    bool useenv;
-} dir_config_t;
-
 std::vector<dir_config_t *> dir_cfgs;
-
-extern module AP_MODULE_DECLARE_DATA defender_module;
-
-/* Custom definition to hold any configuration data we may need. */
-typedef struct {
-    RuntimeScanner *vpRuntimeScanner;
-} defender_config_t;
 
 /* Custom function to ensure our RuntimeScanner get's deleted at the
    end of the request cycle. */
@@ -166,6 +139,43 @@ static int header_parser(request_rec *r) {
     // Register our config data structure for our module for retrieval later as required
     ap_set_module_config(r->request_config, &defender_module, (void *) pDefenderConfig);
 
+
+    // Create our structure
+    defender_t *def = NULL;
+    def = (defender_t *)apr_pcalloc(r->pool, sizeof(defender_t));
+    if( def == NULL ) {
+        ap_log_error(APLOG_MARK, APLOG_ALERT, 0, NULL, "Failed to allocate %lu bytes for defender_t structure.",
+                                                        sizeof(defender_t));
+    }
+
+    /* Initialise C-L */
+    const char *s = NULL;
+    long request_content_length = -1;
+    s = apr_table_get(r->headers_in, "Content-Length");
+    if (s != NULL) {
+        request_content_length = strtol(s, NULL, 10);
+    }
+
+    /* Figure out whether this request has a body */
+    def->body_should_exist = 0;
+    if (request_content_length == -1) {
+        /* There's no C-L, but is chunked encoding used? */
+        char *transfer_encoding = (char *)apr_table_get(r->headers_in, "Transfer-Encoding");
+        if( (transfer_encoding != NULL) && (strcasecmp(transfer_encoding, "chunked") == 0) ) {
+            def->body_should_exist = 1;
+        }
+    } else {
+        /* C-L found */
+        def->body_should_exist = 1;
+    }
+
+
+    pDefenderConfig->def = def;
+
+    // And register a cleanup hook
+    apr_pool_cleanup_register(r->pool, def, body_clear, apr_pool_cleanup_null);
+
+
     // Set method
     if (r->method_number == M_GET)
         scanner->method = METHOD_GET;
@@ -246,7 +256,9 @@ static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
  * This is a RUN_ALL HOOK.
  */
 static int fixups(request_rec *r) {
-    int ret;
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Fixups beginning.");
+
     dir_config_t *dcfg = (dir_config_t *) ap_get_module_config(r->per_dir_config, &defender_module);
     // Stop if Defender not enabled
     if (!dcfg->defender)
@@ -262,6 +274,14 @@ static int fixups(request_rec *r) {
 
     defender_config_t *defc = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
     RuntimeScanner *scanner = defc->vpRuntimeScanner;
+    defender_t *def = defc->def;
+
+    /* Has this phase been completed already? */
+    if( def->fixups_done ) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Internal Error: Attempted to process the request body more than once.");
+        return DECLINED;
+    }
+    def->fixups_done = 1;
 
     if (scanner->contentLengthProvided && scanner->contentLength == 0)
         return scanner->processBody();
@@ -288,86 +308,42 @@ static int fixups(request_rec *r) {
     // Pre-allocate necessary bytes
     scanner->body.reserve(scanner->contentLength);
 
-    // Wait for the body to be fully received 
-    apr_bucket_brigade *bb = apr_brigade_create(r->pool, r->connection->bucket_alloc);
-    unsigned int prev_nr_buckets = 0;
-    int seen_eos = 0;
-    apr_status_t status;
-    apr_bucket *bucket = NULL;
-    apr_size_t ttbytes = 0;
-
-    if (bb == NULL)
-        goto read_error_out;
-    do {
-        if( (status = ap_get_brigade(r->input_filters, bb, AP_MODE_SPECULATIVE, APR_BLOCK_READ, MAX_BB_SIZE) )
-            != APR_SUCCESS) {
-            ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Error reading body: %s", get_apr_error(r->pool, status));
-            goto read_error_out;
-        }
-
-        unsigned int nr_buckets = 0;
-        // Iterate over buckets
-        for (bucket = APR_BRIGADE_FIRST(bb);
-             bucket != APR_BRIGADE_SENTINEL(bb); bucket = APR_BUCKET_NEXT(bucket)) {
-            // Stop if we reach the EOS bucket
-            if (APR_BUCKET_IS_EOS(bucket)) {
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "EOS bucket reached.");
-                seen_eos = 1;
+    /* Read body */
+    int ret;
+    char *error_msg = NULL;
+    ret = read_request_body(def, &error_msg, r, dcfg->requestBodyLimit);
+    if( ret < 0 ) {
+        switch( ret ) {
+            case -1 :
+                if( error_msg != NULL ) {
+                    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", error_msg);
+                }
+                return HTTP_INTERNAL_SERVER_ERROR;
+            case -4 : /* Timeout. */
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", error_msg);
+                r->connection->keepalive = AP_CONN_CLOSE;
+                return HTTP_REQUEST_TIME_OUT;
+            case -5 : /* Request body limit reached. */
+                r->connection->keepalive = AP_CONN_CLOSE;
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s. Deny with code (%d)", error_msg, HTTP_REQUEST_ENTITY_TOO_LARGE);
+                return HTTP_REQUEST_ENTITY_TOO_LARGE;
+            case -6 : /* EOF when reading request body. */
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", error_msg);
+                r->connection->keepalive = AP_CONN_CLOSE;
+                return HTTP_BAD_REQUEST;
+            case -7 : /* Partial recieved */
+                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "%s", error_msg);
+                r->connection->keepalive = AP_CONN_CLOSE;
+                return HTTP_BAD_REQUEST;
+            default :
+                /* allow through */
                 break;
-            }
-
-            // Ignore non data buckets
-            if (APR_BUCKET_IS_METADATA(bucket) || APR_BUCKET_IS_FLUSH(bucket)) {
-                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Bucket is METADATA or FLUSH.");
-                continue;
-            }
-
-            nr_buckets++;
-            // Skip already copied buckets
-            if (nr_buckets <= prev_nr_buckets) {
-                ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Skip already copied bucket: %u / %u.", nr_buckets,
-                              prev_nr_buckets);
-                continue;
-            }
-
-            const char *buf;
-            apr_size_t nbytes = MAX_BB_SIZE;
-
-            if ((status = apr_bucket_read(bucket, &buf, &nbytes, APR_BLOCK_READ)) != APR_SUCCESS) {
-                ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Failed reading input / bucket: %s",
-                              get_apr_error(r->pool, status));
-                goto read_error_out;
-            }
-            ttbytes += nbytes;
-            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Bucket successfully read: %lu bytes. Total length=%lu.",
-                          nbytes, ttbytes);
-
-            // More bytes in the BODY than specified in the content-length
-            if (scanner->body.length() + nbytes > scanner->contentLength) {
-                ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Too much POST data: received body of %lu bytes but "
-                        "got content-length: %lu", scanner->body.length() + nbytes, scanner->contentLength);
-                goto read_error_out;
-            }
-
-            // More bytes in the BODY than specified by the allowed body limit
-            if (scanner->body.length() + nbytes > dcfg->requestBodyLimit) {
-                scanner->bodyLimitExceeded = true;
-                ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Body limit exceeded (%lu)", dcfg->requestBodyLimit);
-                break;
-            }
-
-            scanner->body.append(buf, nbytes);
         }
-        prev_nr_buckets = nr_buckets;
+        def->body_error = 1;
+        def->body_error_msg = error_msg;
+    }
 
-        if (scanner->body.length() == scanner->contentLength) {
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Content-Length %lu reached.", scanner->contentLength);
-            break;
-        }
-
-        apr_brigade_cleanup(bb);
-
-    } while( !scanner->bodyLimitExceeded && !seen_eos );
+    scanner->body.append(def->stream_input_data, def->stream_input_length);
 
 //    cerr << "[pid " << getpid() << "] read " << scanner->body.length() << " bytes, ";
 //    cerr << "content-length: " << scanner->contentLength << endl;
@@ -383,26 +359,128 @@ static int fixups(request_rec *r) {
 
 //    cerr << "[pid " << getpid() << "] body (" << scanner->body.length() << ") scanned" << endl;
 
-    return ret;
+    /* Add the input filter. */
+    ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "Insert_filter: Adding input forwarding filter %s(r %pp).",
+            (((r->main != NULL)||(r->prev != NULL)) ? "for subrequest " : ""), r);
 
-    read_error_out:
-        switch(status) {
-            case APR_EOF : /* EOF when reading request body. */
-                r->connection->keepalive = AP_CONN_CLOSE;
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "HTTP_BAD_REQUEST");
-                return HTTP_BAD_REQUEST;
-            case APR_TIMEUP : /* Timeout. */
-                r->connection->keepalive = AP_CONN_CLOSE;
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "HTTP_REQUEST_TIME_OUT.");
-                return HTTP_REQUEST_TIME_OUT;
-            case AP_FILTER_ERROR :
-            case APR_EGENERAL :
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "DECLINED.");
-                return DECLINED;
-            default :
-                ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "HTTP_INTERNAL_SERVER_ERROR.");
-                return HTTP_INTERNAL_SERVER_ERROR;
+    ap_add_input_filter("DEFENDER_IN", NULL, r, r->connection);
+
+    return ret;
+}
+
+/**
+ * This request filter will forward the previously stored
+ * request body further down the chain (most likely to the
+ * processing module).
+ */
+apr_status_t input_filter(ap_filter_t *f, apr_bucket_brigade *bb_out,
+                          ap_input_mode_t mode, apr_read_type_e block, apr_off_t nbytes)
+{
+    request_rec *r = f->r;
+    apr_bucket *bucket = NULL;
+    apr_status_t rc;
+    char *error_msg = NULL;
+    chunk_t *chunk = NULL;
+
+    ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Defender input filter begins.");
+
+    defender_config_t *config = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
+    RuntimeScanner *scanner = config->vpRuntimeScanner;
+    defender_t *def = config->def;
+
+    // Stop if this is not the main request
+    if (r->main != NULL || r->prev != NULL)
+        return DECLINED;
+
+    // Process only if POST / PUT request
+    if (r->method_number != M_POST && r->method_number != M_PUT)
+        return DECLINED;
+
+    if( config->def == NULL ) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Internal error in input filter: structure is null !");
+        ap_remove_input_filter(f);
+        return APR_EGENERAL;
+    }
+
+    if( (def->status == IF_STATUS_COMPLETE) || (def->status == IF_STATUS_NONE) ) {
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Input filter: Input forwarding already complete, "
+                "skipping (f %pp, r %pp).", f, f->r);
+        ap_remove_input_filter(f);
+        return ap_get_brigade(f->next, bb_out, mode, block, nbytes);
+    }
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Input filter: Forwarding input: mode=%d, block=%d, nbytes=%"
+            APR_OFF_T_FMT " (f %pp, r %pp).", mode, block, nbytes, f, f->r);
+
+    if( def->started_forwarding == 0) {
+        def->started_forwarding = 1;
+        rc = body_retrieve_start(def, &error_msg, r);
+        if( rc == -1 ) {
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "%s", error_msg);
+            return APR_EGENERAL;
         }
+    }
+
+    rc = body_retrieve(def, &chunk, (unsigned int)nbytes, &error_msg, r);
+    if (rc == -1) {
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "%s", error_msg);
+        return APR_EGENERAL;
+    }
+
+    if( chunk && def->stream_changed == 0 ) {
+        /* Copy the data we received in the chunk */
+        bucket = apr_bucket_heap_create(chunk->data, chunk->length, NULL, r->connection->bucket_alloc);
+
+        if( bucket == NULL ) {
+            /* FIXME : Correct log level ? */
+            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Input filter: Heap bucket is NULL.");
+            return APR_EGENERAL;
+        }
+        /* Append the bucket at the end of the brigade */
+        APR_BRIGADE_INSERT_TAIL(bb_out, bucket);
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Input filter: Forwarded %" APR_SIZE_T_FMT " bytes.", chunk->length);
+
+    } else if( def->stream_input_data != NULL ) {
+
+        def->stream_changed = 0;
+
+        bucket = apr_bucket_heap_create(def->stream_input_data, def->stream_input_length, NULL,
+                                        f->r->connection->bucket_alloc);
+
+        if(def->stream_input_data != NULL) {
+            ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Input filter: Freeing stream input data.");
+            free(def->stream_input_data);
+            def->stream_input_data = NULL;
+        }
+
+        if( bucket == NULL ) {
+            /* FIXME : Correct log level ? */
+            ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r, "Input filter: Heap bucket is NULL.");
+            return APR_EGENERAL;
+        }
+        APR_BRIGADE_INSERT_TAIL(bb_out, bucket);
+
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Input filter: Forwarded %" APR_SIZE_T_FMT " bytes.",
+                      def->stream_input_length);
+    }
+
+    if( rc == 0 ) {
+        if( def->if_seen_eos ) {
+            bucket = apr_bucket_eos_create(f->r->connection->bucket_alloc);
+            if (bucket == NULL) return APR_EGENERAL;
+            APR_BRIGADE_INSERT_TAIL(bb_out, bucket);
+
+            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Input filter: Sent EOS.");
+        }
+
+        /* We're done */
+        def->status = IF_STATUS_COMPLETE;
+        ap_remove_input_filter(f);
+
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Input filter: Input forwarding complete.");
+    }
+
+    return APR_SUCCESS;
 }
 
 /* Apache callback to register our hooks.
@@ -411,7 +489,10 @@ static void defender_register_hooks(apr_pool_t *) {
     ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
     static const char *const aszSucc[] = {"mod_security2.c", NULL};
     ap_hook_header_parser(header_parser, NULL, aszSucc, APR_HOOK_REALLY_FIRST - 20);
+    /* We must intervene BEFORE mod_security */
     ap_hook_fixups(fixups, NULL, aszSucc, APR_HOOK_REALLY_FIRST - 20);
+    /* Insert input filter to give back data */
+    ap_register_input_filter("DEFENDER_IN", input_filter, NULL, AP_FTYPE_CONTENT_SET);
 }
 
 /**
