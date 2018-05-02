@@ -36,7 +36,6 @@ using std::endl;
 using std::istringstream;
 using std::pair;
 
-static const char *logLevels[] = {"emerg", "alert", "crit", "error", "warn", "notice", "info", "debug", NULL};
 
 // Shell colors
 #define KNRM  "\x1B[0m"

@@ -11,6 +11,8 @@
 #include "Util.h"
 #include "RuntimeScanner.hpp"
 
+static const char *logLevels[] = {"emerg", "alert", "crit", "error", "warn", "notice", "info", "debug", NULL};
+
 namespace Util {
     vector<string> split(const string &s, char delimiter) {
         vector<string> v;
