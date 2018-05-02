@@ -8,7 +8,7 @@
  *  Released under the GPLv3
  */
 
-#define MATCH_ZONE_DEF
+#define RUNTIME_SCANNER_DEF
 #include "RuntimeScanner.hpp"
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"

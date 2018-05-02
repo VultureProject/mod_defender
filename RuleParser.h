@@ -180,7 +180,7 @@ enum MATCH_ZONE {
     UNKNOWN
 };
 
-#ifdef MATCH_ZONE_DEF
+#if defined(RUNTIME_SCANNER_DEF) || defined(DEBUG_CONFIG_WL)
 static const char *match_zones[] = {
         "HEADERS",
         "URL",
