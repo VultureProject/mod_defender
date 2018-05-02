@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 export DEFENDER_HOME=`pwd`
 echo running tests/travis/$RUN, home: $DEFENDER_HOME
