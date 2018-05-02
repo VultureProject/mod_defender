@@ -180,6 +180,7 @@ enum MATCH_ZONE {
     UNKNOWN
 };
 
+#ifdef MATCH_ZONE_DEF
 static const char *match_zones[] = {
         "HEADERS",
         "URL",
@@ -190,6 +191,7 @@ static const char *match_zones[] = {
         "UNKNOWN",
         NULL
 };
+#endif
 
 static const char *actions[] = {
         "ALLOW",

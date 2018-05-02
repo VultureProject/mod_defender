@@ -8,6 +8,7 @@
  *  Released under the GPLv3
  */
 
+#define MATCH_ZONE_DEF
 #include "RuleParser.h"
 
 vector<string> tmpMainRules;
