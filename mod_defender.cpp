@@ -22,7 +22,6 @@
 /*************************/
 
 #include "mod_defender.hpp"
-#include "RuntimeScanner.hpp"
 
 
 /********************/
