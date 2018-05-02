@@ -98,7 +98,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
     stringstream errlog;
     for (const pair<string, unsigned long> &tagScore : rule.scores) {
         bool matched = false;
-        int &score = matchScores[tagScore.first];
+        size_t score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
 
         if (logLevel >= LOG_LVL_NOTICE) {
@@ -176,7 +176,7 @@ void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const s
         checkLibInjection(zone, name, value);
 
     unsigned long nbMatch = 0;
-    for (int i = 0; i < rules.size() && ((!block || learning) && !drop); i++) {
+    for (size_t i = 0; i < rules.size() && ((!block || learning) && !drop); i++) {
         const http_rule_t &rule = rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 

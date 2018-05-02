@@ -531,7 +531,7 @@ void RuleParser::generateHashTables() {
 bool RuleParser::checkIds(unsigned long matchId, const vector<int> &wlIds) {
     bool negative = false;
 
-    for (const int &wlId : wlIds) {
+    for (auto &wlId : wlIds) {
         if (wlId == matchId)
             return true;
         if (wlId == 0) // WHY ??

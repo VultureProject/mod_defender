@@ -63,7 +63,7 @@ namespace Util {
         bool in_quotes = false;
         std::string part;
         unsigned int backslash = 0;
-        for (int i = 0; i < raw_directive.length(); i++) {
+        for (size_t i = 0; i < raw_directive.length(); i++) {
             const char &c = raw_directive[i];
             bool char_added = false;
             if (in_quotes || (c != ' ')) {

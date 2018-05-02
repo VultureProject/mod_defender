@@ -143,7 +143,7 @@ public:
     bool libinjSQL;
     bool libinjXSS;
 
-    unordered_map<string, int> matchScores;
+    unordered_map<string, unsigned long> matchScores;
     unordered_map<string, match_info_t> matchInfos;
 
     bool block = false;
