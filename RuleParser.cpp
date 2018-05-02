@@ -371,7 +371,8 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uri
     else if (curr.br.fileExtMz)
         zone = FILE_EXT;
 
-    for (int i = 0; i < curr.br.customLocations.size(); i++) {
+    size_t i = 0;
+    for ( i = 0; i < curr.br.customLocations.size(); i++) {
         const custom_rule_location_t &loc = curr.br.customLocations[i];
         if (loc.specificUrl) {
             uriIndex = i;

@@ -133,7 +133,7 @@ namespace Util {
     }
 
     inline char *strnchr(const char *s, int c, unsigned long len) {
-        int cpt;
+        unsigned long cpt = 0;
         for (cpt = 0; cpt < len && s[cpt]; cpt++)
             if (s[cpt] == c)
                 return ((char *) s + cpt);
