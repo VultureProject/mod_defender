@@ -33,7 +33,7 @@ matrix:
       env: RUN="tests/travis/basic.sh"
 
 script:
-  - tests/travis/do_run.sh
+  - bash tests/travis/do_run.sh
 
 after_script:
   - sudo cat /var/log/apache2/error.log
