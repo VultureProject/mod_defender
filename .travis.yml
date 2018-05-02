@@ -32,6 +32,11 @@ matrix:
       compiler: "gcc"
       env: RUN="basic.sh"
 
+  include:
+    - os: linux
+      compiler: "gcc"
+      env: RUN="https.sh"
+
 script:
   - /bin/bash ./tests/travis/do_run.sh
 
