@@ -69,8 +69,6 @@ enum METHOD {
     UNSUPPORTED_METHOD,
 };
 
-static const char *methods[] = {"GET", "POST", "PUT", NULL};
-
 enum CONTENT_TYPE {
     CONTENT_TYPE_UNSUPPORTED = 0,
     CONTENT_TYPE_URL_ENC, // application/x-www-form-urlencoded

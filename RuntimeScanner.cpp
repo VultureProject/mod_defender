@@ -12,6 +12,8 @@
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
 
+static const char *methods[] = {"GET", "POST", "PUT", NULL};
+
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
     if (logLevel >= LOG_LVL_NOTICE) {
