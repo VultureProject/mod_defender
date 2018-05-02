@@ -30,7 +30,7 @@ matrix:
   include:
     - os: linux
       compiler: "gcc"
-      env: RUN="tests/travis/basic.sh"
+      env: RUN="basic.sh"
 
 script:
   - /bin/bash ./tests/travis/do_run.sh
