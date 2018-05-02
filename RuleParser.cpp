@@ -233,10 +233,12 @@ unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines, string error
             if (rulePart.substr(0, 3) == "wl:") {
                 string rawWhitelist = rulePart.substr(3);
                 rule.wlIds = splitToInt(rawWhitelist, ',');
+#ifdef DEBUG_CONFIG_BASICRULE
                 DEBUG_CONF_BR("wl='");
                 for (const int &id : rule.wlIds)
                     DEBUG_CONF_BR(id << ".");
                 DEBUG_CONF_BR("' ");
+#endif // !DEBUG_CONFIG_BASICRULE
             } else if (rulePart.substr(0, 3) == "mz:") {
                 string rawMatchZone = rulePart.substr(3);
                 parseMatchZone(rule, rawMatchZone, err);

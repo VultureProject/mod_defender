@@ -193,14 +193,6 @@ static const char *match_zones[] = {
 };
 #endif
 
-static const char *actions[] = {
-        "ALLOW",
-        "BLOCK",
-        "DROP",
-        "LOG",
-        NULL
-};
-
 /*
 ** this struct is used to aggregate all whitelist
 ** that point to the same URI or the same VARNAME
