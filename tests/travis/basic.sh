@@ -49,7 +49,3 @@ sudo service apache2 start
 cd tests/
 bash core.sh localhost
 bash internal.sh localhost
-
-sudo cat /var/log/apache2/error.log
-sudo cat /var/log/apache2/defender_match.log
-sudo cat /var/log/apache2/defender_json_match.log

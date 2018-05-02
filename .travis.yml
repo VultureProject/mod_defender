@@ -32,3 +32,10 @@ matrix:
       compiler: "gcc"
       env: RUN="tests/travis/basic.sh"
 
+script:
+  - tests/travis/do_run.sh
+
+after_script:
+  - sudo cat /var/log/apache2/error.log
+  - sudo cat /var/log/apache2/defender_match.log
+  - sudo cat /var/log/apache2/defender_json_match.log
