@@ -7,31 +7,52 @@
  *  Copyright (c) 2017 Annihil
  *  Released under the GPLv3
  */
+/**
+ * \file     mod_defender.c
+ * \authors  Annihil, Kevin Guillemot
+ * \version  2.0
+ * \date     28/02/2017
+ * \license  GPLv3
+ * \brief    mod_defender principal code and handlers
+ */
 
-#include <http_request.h>
-#include <http_protocol.h>
-#include <http_config.h>
-#include <http_log.h>
-#include <apr_strings.h>
-#include <util_script.h>
-#include "RuntimeScanner.hpp"
+
+/*************************/
+/* Inclusion of .H files */
+/*************************/
+
 #include "mod_defender.hpp"
+#include "RuntimeScanner.hpp"
 
-// Extra Apache 2.4+ C++ module declaration
-#ifdef APLOG_USE_MODULE
-APLOG_USE_MODULE(defender);
-#endif
 
+/********************/
+/* Global variables */
+/********************/
+
+/**
+ *  Configuration structure
+ */
 std::vector<dir_config_t *> dir_cfgs;
 
-/* Custom function to ensure our RuntimeScanner get's deleted at the
-   end of the request cycle. */
+
+/***************************/
+/* Definition of functions */
+/***************************/
+
+/**
+ *  Custom function to ensure our RuntimeScanner get's deleted at the
+ *   end of the request cycle.
+ */
 static apr_status_t defender_delete_runtimescanner_object(void *inPtr) {
     if (inPtr)
         delete (RuntimeScanner *) inPtr;
     return OK;
 }
 
+/**
+ *  Custom function to ensure our RuleParser get's deleted at the
+ *   end of the request cycle.
+ */
 static apr_status_t defender_delete_ruleparser_object(void *inPtr) {
     if (inPtr) {
         ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, NULL, "Unloading Defender for a loc");
@@ -40,11 +61,11 @@ static apr_status_t defender_delete_ruleparser_object(void *inPtr) {
     return OK;
 }
 
-/*
- * This routine is called after the server finishes the configuration
- * process.  At this point the module may review and adjust its configuration
- * settings in relation to one another and report any problems.  On restart,
- * this routine will be called only once, in the running server process.
+/**
+ *  This routine is called after the server finishes the configuration process.
+ *  At this point the module may review and adjust its configuration
+ *   settings in relation to one another and report any problems.
+ *  On restart, this routine will be called only once, in the running server process.
  */
 static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec *s) {
     /* Figure out if we are here for the first time */
@@ -61,7 +82,7 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
         if (!mainruleErr.empty())
             ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "MainRules error %s", mainruleErr.c_str());
 
-        for (int i = 0; i < dir_cfgs.size(); i++) {
+        for (size_t i = 0; i < dir_cfgs.size(); i++) {
             dir_config_t *dcfg = dir_cfgs[i];
             if (dcfg->defender) {
                 dcfg->parser = new RuleParser();
@@ -90,6 +111,10 @@ static int post_config(apr_pool_t *pconf, apr_pool_t *, apr_pool_t *, server_rec
     return OK;
 }
 
+/**
+ *  If learning is not activated, add all mod_defender score types into env.
+ *  They will be retrieved into mod_security and in mod_vulture to increment global score.
+ */
 static int pass_in_env(request_rec *r, RuntimeScanner *scanner) {
     // if ((scanner->block && !scanner->learning) || scanner->drop) {  // NOT USING BLOCK OR DROP IN VULTURE
     if (!scanner->learning) {
@@ -102,19 +127,22 @@ static int pass_in_env(request_rec *r, RuntimeScanner *scanner) {
     return DECLINED;
 }
 
+/**
+ *  Function used to write into error file. Used as scanner->writeLogFn attribute.
+ */
 static int write_log(void *thefile, const void *buf, size_t *nbytes) {
     return apr_file_write((apr_file_t *) thefile, buf, nbytes);
 }
 
-/*
- * this routine gives our module another chance to examine the request
- * headers and to take special action. This is the first phase whose
- * hooks' configuration directives can appear inside the <Directory>
- * and similar sections, because at this stage the URI has been mapped
- * to the filename. For example this phase can be used to block evil
- * clients, while little resources were wasted on these.
+/**
+ *  This routine gives our module another chance to examine the request
+ *   headers and to take special action. This is the first phase whose
+ *   hooks' configuration directives can appear inside the <Directory>
+ *   and similar sections, because at this stage the URI has been mapped
+ *   to the filename. For example this phase can be used to block evil
+ *   clients, while little resources were wasted on these.
  *
- * This is a RUN_ALL hook.
+ *  This is a RUN_ALL hook.
  */
 static int header_parser(request_rec *r) {
     // Get the module configuration
@@ -242,18 +270,11 @@ static int header_parser(request_rec *r) {
     return ret;
 }
 
-static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
-    char *text = (char *) apr_pcalloc(p, 201);
-    if (text == NULL) return NULL;
-    apr_strerror(rc, text, 200);
-    return text;
-}
-
-/*
- * This routine is called to perform any module-specific fixing of header
- * fields, et cetera.  It is invoked just before any content-handler.
+/**
+ *  This routine is called to perform any module-specific fixing of header
+ *   fields, et cetera.  It is invoked just before any content-handler.
  *
- * This is a RUN_ALL HOOK.
+ *  This is a RUN_ALL HOOK.
  */
 static int fixups(request_rec *r) {
 
@@ -369,9 +390,9 @@ static int fixups(request_rec *r) {
 }
 
 /**
- * This request filter will forward the previously stored
- * request body further down the chain (most likely to the
- * processing module).
+ *  This request filter will forward the previously stored
+ *   request body further down the chain (most likely to the
+ *   processing module).
  */
 apr_status_t input_filter(ap_filter_t *f, apr_bucket_brigade *bb_out,
                           ap_input_mode_t mode, apr_read_type_e block, apr_off_t nbytes)
@@ -385,7 +406,6 @@ apr_status_t input_filter(ap_filter_t *f, apr_bucket_brigade *bb_out,
     ap_log_rerror(APLOG_MARK, APLOG_TRACE1, 0, r, "Defender input filter begins.");
 
     defender_config_t *config = (defender_config_t *) ap_get_module_config(r->request_config, &defender_module);
-    RuntimeScanner *scanner = config->vpRuntimeScanner;
     defender_t *def = config->def;
 
     // Stop if this is not the main request
@@ -483,7 +503,8 @@ apr_status_t input_filter(ap_filter_t *f, apr_bucket_brigade *bb_out,
     return APR_SUCCESS;
 }
 
-/* Apache callback to register our hooks.
+/**
+ *  Apache callback to register our hooks.
  */
 static void defender_register_hooks(apr_pool_t *) {
     ap_hook_post_config(post_config, NULL, NULL, APR_HOOK_REALLY_FIRST);
@@ -496,7 +517,7 @@ static void defender_register_hooks(apr_pool_t *) {
 }
 
 /**
- * This function is called when the "MatchLog" configuration directive is parsed.
+ *  This function is called when the "MatchLog" configuration directive is parsed.
  */
 static const char *set_matchlog_path(cmd_parms *cmd, void *cfg, const char *arg) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
@@ -527,7 +548,7 @@ static const char *set_matchlog_path(cmd_parms *cmd, void *cfg, const char *arg)
 }
 
 /**
- * This function is called when the "JSONMatchLog" configuration directive is parsed.
+ *  This function is called when the "JSONMatchLog" configuration directive is parsed.
  */
 static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *cfg, const char *arg) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
@@ -557,6 +578,9 @@ static const char *set_jsonerrorlog_path(cmd_parms *cmd, void *cfg, const char *
     return NULL; // success
 }
 
+/**
+ *  This function is called when the "RequestBodyLimit" configuration directive is parsed.
+ */
 static const char *set_request_body_limit(cmd_parms *cmd, void *cfg, const char *arg) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     unsigned long limit = strtoul(arg, NULL, 10);
@@ -566,53 +590,80 @@ static const char *set_request_body_limit(cmd_parms *cmd, void *cfg, const char 
     return NULL;
 }
 
+/**
+ * This function is called when the "LibinjectionSQL" configuration directive is parsed.
+ */
 static const char *set_libinjection_sql_flag(cmd_parms *, void *cfg, int flag) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->libinjection_sql = (bool) flag;
     return NULL;
 }
 
+/**
+ * This function is called when the "LibinjectionXSS" configuration directive is parsed.
+ */
 static const char *set_libinjection_xss_flag(cmd_parms *, void *cfg, int flag) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->libinjection_xss = (bool) flag;
     return NULL;
 }
 
+/**
+ * This function is called when the "Defender" configuration directive is parsed.
+ */
 static const char *set_defender_flag(cmd_parms *, void *cfg, int flag) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->defender = (bool) flag;
     return NULL;
 }
 
+/**
+ * This function is called when the "LearningMode" configuration directive is parsed.
+ */
 static const char *set_learning_flag(cmd_parms *, void *cfg, int flag) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->learning = (bool) flag;
     return NULL;
 }
 
+/**
+ * This function is called when the "ExtensiveLog" configuration directive is parsed.
+ */
 static const char *set_extensive_flag(cmd_parms *, void *cfg, int flag) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->extensive = (bool) flag;
     return NULL;
 }
 
+/**
+ * This function is called when the "UseEnv" configuration directive is parsed.
+ */
 static const char *set_useenv_flag(cmd_parms *, void *cfg, int flag) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->useenv = (bool) flag;
     return NULL;
 }
 
+/**
+ * This function is called when the "MainRule" configuration directives are parsed.
+ */
 static const char *set_mainrules(cmd_parms *, void *, const char *line) {
     tmpMainRules.push_back(string(line));
     return NULL;
 }
 
+/**
+ * This function is called when the "CheckRule" configuration directives are parsed.
+ */
 static const char *set_checkrules(cmd_parms *, void *cfg, const char *arg1, const char *arg2) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->tmpCheckRules.push_back(std::make_pair(string(arg1), string(arg2)));
     return NULL;
 }
 
+/**
+ * This function is called when the "BasicRule" configuration directives are parsed.
+ */
 static const char *set_basicrules(cmd_parms *, void *cfg, const char *line) {
     dir_config_t *dcfg = (dir_config_t *) cfg;
     dcfg->tmpBasicRules.push_back(string(line));
@@ -623,19 +674,19 @@ static const char *set_basicrules(cmd_parms *, void *cfg, const char *line) {
  * A declaration of the configuration directives that are supported by this module.
  */
 static const command_rec directives[] = {
-        {"Defender",         (cmd_func) set_defender_flag,         NULL, ACCESS_CONF, FLAG,     "Defender toggle"},
-        {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF,   RAW_ARGS, "Match directive"},
-        {"CheckRule",        (cmd_func) set_checkrules,            NULL, ACCESS_CONF, TAKE2,    "Score directive"},
-        {"BasicRule",        (cmd_func) set_basicrules,            NULL, ACCESS_CONF, RAW_ARGS, "Whitelist directive"},
-        {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, ACCESS_CONF, TAKE1,    "Path to the match log"},
-        {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, ACCESS_CONF, TAKE1,    "Path to the JSON match log"},
-        {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, ACCESS_CONF, TAKE1,    "Set Request Body Limit"},
-        {"LearningMode",     (cmd_func) set_learning_flag,         NULL, ACCESS_CONF, FLAG,     "Learning mode toggle"},
-        {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, ACCESS_CONF, FLAG,     "Extensive log toggle"},
-        {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, ACCESS_CONF, FLAG,     "Libinjection SQL toggle"},
-        {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, ACCESS_CONF, FLAG,     "Libinjection XSS toggle"},
-        {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, ACCESS_CONF, FLAG,     "UseEnv toggle"},
-        {NULL}
+    {"Defender",         (cmd_func) set_defender_flag,         NULL, ACCESS_CONF, FLAG,     "Defender toggle"},
+    {"MainRule",         (cmd_func) set_mainrules,             NULL, RSRC_CONF,   RAW_ARGS, "Match directive"},
+    {"CheckRule",        (cmd_func) set_checkrules,            NULL, ACCESS_CONF, TAKE2,    "Score directive"},
+    {"BasicRule",        (cmd_func) set_basicrules,            NULL, ACCESS_CONF, RAW_ARGS, "Whitelist directive"},
+    {"MatchLog",         (cmd_func) set_matchlog_path,         NULL, ACCESS_CONF, TAKE1,    "Path to the match log"},
+    {"JSONMatchLog",     (cmd_func) set_jsonerrorlog_path,     NULL, ACCESS_CONF, TAKE1,    "Path to the JSON match log"},
+    {"RequestBodyLimit", (cmd_func) set_request_body_limit,    NULL, ACCESS_CONF, TAKE1,    "Set Request Body Limit"},
+    {"LearningMode",     (cmd_func) set_learning_flag,         NULL, ACCESS_CONF, FLAG,     "Learning mode toggle"},
+    {"ExtensiveLog",     (cmd_func) set_extensive_flag,        NULL, ACCESS_CONF, FLAG,     "Extensive log toggle"},
+    {"LibinjectionSQL",  (cmd_func) set_libinjection_sql_flag, NULL, ACCESS_CONF, FLAG,     "Libinjection SQL toggle"},
+    {"LibinjectionXSS",  (cmd_func) set_libinjection_xss_flag, NULL, ACCESS_CONF, FLAG,     "Libinjection XSS toggle"},
+    {"UseEnv",           (cmd_func) set_useenv_flag,           NULL, ACCESS_CONF, FLAG,     "UseEnv toggle"},
+    {NULL,               NULL,                                 NULL, RSRC_CONF,   TAKE1,    NULL} /* End by an empty */
 };
 
 /**
@@ -663,4 +714,7 @@ module AP_MODULE_DECLARE_DATA defender_module = {
         NULL, // merge per-server configurations
         directives, // configuration directive handlers,
         defender_register_hooks // request handlers
+#if defined(AP_MODULE_HAS_FLAGS)
+        ,AP_MODULE_FLAG_ALWAYS_MERGE /* flags */
+#endif
 };

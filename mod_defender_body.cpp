@@ -1,23 +1,30 @@
-//
-// Created by kguillemot on 30/04/18.
-//
+/**
+ * \file     mod_defender_body.c
+ * \authors  Kevin Guillemot
+ * \version  1.0
+ * \date     30/04/2018
+ * \license  GPLv3
+ * \brief    All body related methods used by mod_defender to save an give back data
+ * \note     Most of the code present here come from mod_security2,
+ *            more precisely from the file apache2/msc_reqbody.c
+ */
 
-#include <http_request.h>
-#include <http_protocol.h>
-#include <http_core.h>
-#include <http_config.h>
-#include <http_log.h>
-#include <apr_strings.h>
-#include <util_script.h>
-#include "RuntimeScanner.hpp"
+
+/*************************/
+/* Inclusion of .H files */
+/*************************/
+
 #include "mod_defender.hpp"
-
-// Extra Apache 2.4+ C++ module declaration
-#ifdef APLOG_USE_MODULE
-APLOG_USE_MODULE(defender);
-#endif
+#include "RuntimeScanner.hpp"
 
 
+/***************************/
+/* Definition of fonctions */
+/***************************/
+
+/**
+ *  Returns string representation of provided status, 200 bytes length max.
+ */
 static char *get_apr_error(apr_pool_t *p, apr_status_t rc) {
     char *text = (char *) apr_pcalloc(p, 201);
     if (text == NULL) return NULL;
@@ -450,7 +457,6 @@ apr_status_t read_request_body(defender_t *def, char **error_msg, request_rec *r
                                                           " bytes. Total length=%lu", bucket->type->name, buflen,
                                                            def->body_length);
 
-
             /* Check request body limit (should only trigger on chunked requests). */
             if( def->body_length + buflen > (apr_size_t)body_limit ) {
                 *error_msg = apr_psprintf(r->pool, "Request body (%ld+%ld) is larger than the configured limit (%ld).",
@@ -465,6 +471,10 @@ apr_status_t read_request_body(defender_t *def, char **error_msg, request_rec *r
 
             if( buflen != 0 ) {
                 int rcbs = body_store_memory(def, buf, buflen, error_msg, r);
+                if( rcbs < 0 ) {
+                    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Error while ending bb saving : %s", *error_msg);
+                    return -1;
+                }
             }
 
             if( APR_BUCKET_IS_EOS(bucket) ) {
@@ -476,9 +486,8 @@ apr_status_t read_request_body(defender_t *def, char **error_msg, request_rec *r
         apr_brigade_cleanup(bb_in);
     } while( !finished_reading );
 
-    // TODO: Why ignore the return code here?
-    int ret = 0;
-    if( (ret=body_end(def, error_msg, r)) < 0 ) {
+
+    if( body_end(def, error_msg, r) < 0 ) {
         ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r, "Error while ending bb saving : %s", *error_msg);
     }
 
@@ -491,7 +500,8 @@ apr_status_t read_request_body(defender_t *def, char **error_msg, request_rec *r
 }
 
 /**
- *
+ *  Clear defender_t body_chunks and body_pool attributes.
+ *  Called when request pool is destroyed, registered with apr_pool_cleanup_register()
  */
 apr_status_t body_clear(void *data) {
     defender_t *def = (defender_t *)data;
