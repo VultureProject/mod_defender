@@ -312,10 +312,10 @@ static int fixups(request_rec *r) {
     if (scanner->bodyLimitExceeded)
         return scanner->processBody();
 
-    if (!scanner->contentLengthProvided)
+    if (scanner->transferEncodingProvided && scanner->transferEncoding == TRANSFER_ENCODING_UNSUPPORTED)
         return HTTP_NOT_IMPLEMENTED;
 
-    if (scanner->transferEncodingProvided /*&& scanner->transferEncoding == TRANSFER_ENCODING_UNSUPPORTED*/)
+    if (!scanner->transferEncodingProvided && !scanner->contentLengthProvided)
         return HTTP_NOT_IMPLEMENTED;
 
     if( scanner->contentLength >= MAX_BB_SIZE ) {

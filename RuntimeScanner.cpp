@@ -113,7 +113,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
     stringstream errlog;
     for (const pair<string, unsigned long> &tagScore : rule.scores) {
         bool matched = false;
-        size_t score = matchScores[tagScore.first];
+        size_t& score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
 
         if (logLevel >= LOG_LVL_NOTICE) {
