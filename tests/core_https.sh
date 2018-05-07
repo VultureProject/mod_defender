@@ -75,7 +75,7 @@ test_count=$((tests_size / 2))
 test_passed=0
 
 for ((i=0; i<$tests_size; i+=2)); do
-	req="curl -k https://$HOST/${tests[$i]}"
+	req="curl --cacert $ca_path https://$HOST/${tests[$i]}"
 	expected_action=${tests[$i+1]}
 	status_code=`$req $curl_ret`
 	test_msg=`check_block $status_code $expected_action`
