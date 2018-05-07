@@ -80,7 +80,7 @@ for ((i=0; i<$tests_size; i+=2)); do
 	status_code=`$req $curl_ret`
 	test_msg=`check_block $status_code $expected_action`
 	test_passed=$((test_passed + $?))
-	printf "%-60s %s\n" "$req" "$status_code  $test_msg"
+	printf "%-95s %s\n" "$req" "$status_code  $test_msg"
 done
 
 echo $test_passed/$test_count "tests passed" \($(((test_passed * 100) / test_count))%\)
