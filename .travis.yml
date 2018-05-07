@@ -1,7 +1,9 @@
-language: cpp
+sudo: required
+
 os: linux
 dist: trusty
-sudo: required
+
+language: cpp
 compiler: gcc
 
 addons:
@@ -9,69 +11,35 @@ addons:
     packages:
       - apache2
       - apache2-dev
-      - g++-5
-      - gcc-5
+      - g++-6
+      - gcc-6
     sources:
       - ubuntu-toolchain-r-test
 
 before_install:
 
 install:
-  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 90
+  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-6 90
+  - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 90
 
-before_script:
-  - sudo mkdir /etc/defender/
-  - >
-    sudo wget -O /etc/defender/core.rules
-    https://raw.githubusercontent.com/nbs-system/naxsi/master/naxsi_config/naxsi_core.rules
-  - sudo sed -i "s/select|union|update|delete|insert|table|from|ascii|hex|unhex|drop/\\\b(select|union|update|delete|insert|table|from|ascii|hex|unhex|drop)\\\b/" /etc/defender/core.rules
-  - >
-    printf
-    "LoadModule defender_module /usr/lib/apache2/modules/mod_defender.so
-      <IfModule defender_module>
-      Include /etc/defender/core.rules
-      </IfModule>" | sudo tee /etc/apache2/mods-available/defender.load
-  - sudo apachectl -v
-  - sudo apachectl -M
-  - sudo a2enmod defender
-  - sudo service apache2 stop
-  - >
-    printf
-    "<VirtualHost *:80>
-      LogLevel notice
-      ErrorLog \${APACHE_LOG_DIR}/error.log
-      AllowEncodedSlashes On
-      <Location />
-        <IfModule defender_module>
-        Defender On
-        MatchLog \${APACHE_LOG_DIR}/defender_match.log
-        JSONMatchLog \${APACHE_LOG_DIR}/defender_json_match.log
-        RequestBodyLimit 8388608
-        LearningMode Off
-        ExtensiveLog Off
-        LibinjectionSQL Off
-        LibinjectionXSS Off
-        CheckRule \"\$SQL >= 8\" BLOCK
-        CheckRule \"\$RFI >= 8\" BLOCK
-        CheckRule \"\$TRAVERSAL >= 4\" BLOCK
-        CheckRule \"\$EVADE >= 4\" BLOCK
-        CheckRule \"\$XSS >= 8\" BLOCK
-        CheckRule \"\$UPLOAD >= 8\" BLOCK
-        </IfModule>
-      </Location>
-    </VirtualHost>" | sudo tee /etc/apache2/sites-available/000-default.conf
+matrix:
+  allow_failures:
+  exclude:
+    - compiler: "gcc"
 
+  include:
+    - os: linux
+      compiler: "gcc"
+      env: RUN="basic.sh"
+
+    - os: linux
+      compiler: "gcc"
+      env: RUN="https.sh"
 
 script:
-  - cmake -H. -Bbuild
-  - cmake --build build
-  - sudo cp build/mod_defender.so /usr/lib/apache2/modules/
-  - sudo service apache2 start
-  - cd tests/
-  - bash core.sh localhost
-  - bash internal.sh localhost
+  - /bin/bash ./tests/travis/do_run.sh
 
 after_script:
   - sudo cat /var/log/apache2/error.log
-  - sudo cat /var/log/apache2/defender_match.log
-  - sudo head /var/log/apache2/defender_json_match.log
+#  - sudo cat /var/log/apache2/defender_match.log
+  - sudo cat /var/log/apache2/defender_json_match.log

@@ -180,6 +180,7 @@ enum MATCH_ZONE {
     UNKNOWN
 };
 
+#if defined(RUNTIME_SCANNER_DEF) || defined(DEBUG_CONFIG_WL)
 static const char *match_zones[] = {
         "HEADERS",
         "URL",
@@ -190,14 +191,7 @@ static const char *match_zones[] = {
         "UNKNOWN",
         NULL
 };
-
-static const char *actions[] = {
-        "ALLOW",
-        "BLOCK",
-        "DROP",
-        "LOG",
-        NULL
-};
+#endif
 
 /*
 ** this struct is used to aggregate all whitelist
@@ -271,7 +265,7 @@ class RuleParser {
 private:
     vector<http_rule_t> whitelistRules; // raw array of whitelist rules
     bool isRuleWhitelistedRx(const http_rule_t &rule, const string uri, const string &name, MATCH_ZONE zone, bool targetName);
-    bool isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone, const http_rule_t &rule,
+    bool isWhitelistAdapted(whitelist_rule_t &wlrule, MATCH_ZONE zone, const http_rule_t &rule,
                             MATCH_TYPE type, bool targetName);
 
 public:

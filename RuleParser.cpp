@@ -232,10 +232,12 @@ unsigned int RuleParser::parseBasicRules(vector<string> &ruleLines, string error
             if (rulePart.substr(0, 3) == "wl:") {
                 string rawWhitelist = rulePart.substr(3);
                 rule.wlIds = splitToInt(rawWhitelist, ',');
+#ifdef DEBUG_CONFIG_BASICRULE
                 DEBUG_CONF_BR("wl='");
                 for (const int &id : rule.wlIds)
                     DEBUG_CONF_BR(id << ".");
                 DEBUG_CONF_BR("' ");
+#endif // !DEBUG_CONFIG_BASICRULE
             } else if (rulePart.substr(0, 3) == "mz:") {
                 string rawMatchZone = rulePart.substr(3);
                 parseMatchZone(rule, rawMatchZone, err);
@@ -371,7 +373,8 @@ void RuleParser::wlrIdentify(const http_rule_t &curr, MATCH_ZONE &zone, int &uri
     else if (curr.br.fileExtMz)
         zone = FILE_EXT;
 
-    for (int i = 0; i < curr.br.customLocations.size(); i++) {
+    size_t i = 0;
+    for ( i = 0; i < curr.br.customLocations.size(); i++) {
         const custom_rule_location_t &loc = curr.br.customLocations[i];
         if (loc.specificUrl) {
             uriIndex = i;
@@ -530,7 +533,7 @@ void RuleParser::generateHashTables() {
 bool RuleParser::checkIds(unsigned long matchId, const vector<int> &wlIds) {
     bool negative = false;
 
-    for (const int &wlId : wlIds) {
+    for (auto &wlId : wlIds) {
         if (wlId == matchId)
             return true;
         if (wlId == 0) // WHY ??
@@ -544,9 +547,8 @@ bool RuleParser::checkIds(unsigned long matchId, const vector<int> &wlIds) {
     return negative;
 }
 
-bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, const string &name, MATCH_ZONE zone,
-                                    const http_rule_t &rule,
-                                    MATCH_TYPE type, bool targetName) {
+bool RuleParser::isWhitelistAdapted(whitelist_rule_t &wlrule, MATCH_ZONE zone, const http_rule_t &rule, MATCH_TYPE type,
+                                    bool targetName) {
     if (zone == FILE_EXT)
         zone = BODY; // FILE_EXT zone is just a hack, as it indeed targets BODY
 
@@ -657,13 +659,13 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
     if (name.length() > 0) {
         /* try to find in hashtables */
         bool found = findWlInHash(wlRule, name, zone);
-        if (found && isWhitelistAdapted(wlRule, name, zone, rule, NAME_ONLY, targetName))
+        if (found && isWhitelistAdapted(wlRule, zone, rule, NAME_ONLY, targetName))
             return true;
 
         string hashname = "#" + name;
         DEBUG_CONF_WL("hashing varname [" << name << "] (rule:" << rule.id << ") - 'wl:X_VAR:" << name << "%V|NAME'");
         found = findWlInHash(wlRule, hashname, zone);
-        if (found && isWhitelistAdapted(wlRule, name, zone, rule, NAME_ONLY, targetName))
+        if (found && isWhitelistAdapted(wlRule, zone, rule, NAME_ONLY, targetName))
             return true;
     }
 
@@ -682,21 +684,21 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
             found = true;
         }
 
-        if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
+        if (found && isWhitelistAdapted(wlRule, zone, rule, URI_ONLY, targetName))
             return true;
     }
 
     /* Lookup for $URL|URL (uri)*/
     DEBUG_CONF_WL("hashing uri#1 [" << uri << "] (rule:" << rule.id << ") ($URL:X|URI)");
     bool found = findWlInHash(wlRule, uri, zone);
-    if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
+    if (found && isWhitelistAdapted(wlRule, zone, rule, URI_ONLY, targetName))
         return true;
 
     /* Looking $URL:x|ZONE|NAME */
     string hashname = "#" + uri;
     DEBUG_CONF_WL("hashing uri#3 [" << hashname << "] (rule:" << rule.id << ") ($URL:X|ZONE|NAME)");
     found = findWlInHash(wlRule, hashname, zone);
-    if (found && isWhitelistAdapted(wlRule, name, zone, rule, URI_ONLY, targetName))
+    if (found && isWhitelistAdapted(wlRule, zone, rule, URI_ONLY, targetName))
         return true;
 
     /* Maybe it was $URL+$VAR (uri#name) or (#uri#name) */
@@ -707,7 +709,7 @@ bool RuleParser::isRuleWhitelisted(const http_rule_t &rule, const string &uri, c
     hashname += uri + "#" + name;
     DEBUG_CONF_WL("hashing MIX [" << hashname << "] ($URL:x|$X_VAR:y) or ($URL:x|$X_VAR:y|NAME)");
     found = findWlInHash(wlRule, hashname, zone);
-    if (found && isWhitelistAdapted(wlRule, name, zone, rule, MIXED, targetName))
+    if (found && isWhitelistAdapted(wlRule, zone, rule, MIXED, targetName))
         return true;
 
     if (isRuleWhitelistedRx(rule, uri, name, zone, targetName)) {

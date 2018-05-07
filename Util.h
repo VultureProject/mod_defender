@@ -36,7 +36,6 @@ using std::endl;
 using std::istringstream;
 using std::pair;
 
-static const char *logLevels[] = {"emerg", "alert", "crit", "error", "warn", "notice", "info", "debug", NULL};
 
 // Shell colors
 #define KNRM  "\x1B[0m"
@@ -133,7 +132,7 @@ namespace Util {
     }
 
     inline char *strnchr(const char *s, int c, unsigned long len) {
-        int cpt;
+        unsigned long cpt = 0;
         for (cpt = 0; cpt < len && s[cpt]; cpt++)
             if (s[cpt] == c)
                 return ((char *) s + cpt);

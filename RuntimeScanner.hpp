@@ -69,8 +69,6 @@ enum METHOD {
     UNSUPPORTED_METHOD,
 };
 
-static const char *methods[] = {"GET", "POST", "PUT", NULL};
-
 enum CONTENT_TYPE {
     CONTENT_TYPE_UNSUPPORTED = 0,
     CONTENT_TYPE_URL_ENC, // application/x-www-form-urlencoded
@@ -143,7 +141,7 @@ public:
     bool libinjSQL;
     bool libinjXSS;
 
-    unordered_map<string, int> matchScores;
+    unordered_map<string, unsigned long> matchScores;
     unordered_map<string, match_info_t> matchInfos;
 
     bool block = false;

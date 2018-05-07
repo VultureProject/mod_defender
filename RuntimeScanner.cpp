@@ -8,9 +8,24 @@
  *  Released under the GPLv3
  */
 
+#define RUNTIME_SCANNER_DEF
 #include "RuntimeScanner.hpp"
 #include "libinjection/libinjection_sqli.h"
 #include "libinjection/libinjection.h"
+
+static const char *methods[] = {
+        "GET",
+        "POST",
+        "PUT",
+        NULL
+};
+static const char *actions[] = {
+        "ALLOW",
+        "BLOCK",
+        "DROP",
+        "LOG",
+        NULL
+};
 
 void RuntimeScanner::applyRuleMatch(const http_rule_t &rule, unsigned long nbMatch, MATCH_ZONE zone, const string &name,
                                     const string &value, bool targetName) {
@@ -98,7 +113,7 @@ void RuntimeScanner::applyCheckRule(const http_rule_t &rule, unsigned long nbMat
     stringstream errlog;
     for (const pair<string, unsigned long> &tagScore : rule.scores) {
         bool matched = false;
-        int &score = matchScores[tagScore.first];
+        size_t& score = matchScores[tagScore.first];
         score += tagScore.second * nbMatch;
 
         if (logLevel >= LOG_LVL_NOTICE) {
@@ -176,7 +191,7 @@ void RuntimeScanner::basestrRuleset(MATCH_ZONE zone, const string &name, const s
         checkLibInjection(zone, name, value);
 
     unsigned long nbMatch = 0;
-    for (int i = 0; i < rules.size() && ((!block || learning) && !drop); i++) {
+    for (size_t i = 0; i < rules.size() && ((!block || learning) && !drop); i++) {
         const http_rule_t &rule = rules[i];
         DEBUG_RUNTIME_BRS(match_zones[zone] << ":#" << rule.id << " ");
 
