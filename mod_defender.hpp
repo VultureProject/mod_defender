@@ -45,31 +45,31 @@ extern module AP_MODULE_DECLARE_DATA defender_module;
 
 /**
  * \def MAX_BB_SIZE
- *      The length of the 403 response body, in bytes
+ *      The maximum length of post body processed
  */
 #define MAX_BB_SIZE 0x7FFFFFFF
 
 /**
  * \def CHUNK_CAPACITY
- *      The length of the 403 response body, in bytes
+ *      The maximum length of a chunk
  */
 #define CHUNK_CAPACITY 8192
 
 /**
  * \def IF_STATUS_NONE
- *      The length of the 403 response body, in bytes
+ *      The status of the body to be processed
  */
 #define IF_STATUS_NONE 0
 
 /**
  * \def IF_STATUS_WANTS_TO_RUN
- *      The length of the 403 response body, in bytes
+ *      The status of the body to be processed
  */
 #define IF_STATUS_WANTS_TO_RUN 1
 
 /**
  * \def IF_STATUS_COMPLETE
- *      The length of the 403 response body, in bytes
+ *      The status of the body to be processed
  */
 #define IF_STATUS_COMPLETE 2
 
