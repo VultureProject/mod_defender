@@ -55,6 +55,8 @@ declare -a core_rules_tests=(
 	"~~"					1 1 1 1 1 1
 	"\`"					1 1 1 1 1 1
 	"%20"					1 1 1 1 1 1
+    # LibXSS check with evading %00
+	"%00<script>alert('abcd');</script>"    1 1 1 1 1 1
 
 	# Evading tricks IDs: 1400-1500
 	"&#"					1 1 1 1 1 1

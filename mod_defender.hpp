@@ -20,6 +20,7 @@
 #include <http_config.h>
 #include <http_log.h>
 #include <apr_strings.h>
+#include <apr_lib.h>
 #include <util_script.h>
 #include "RuleParser.h"
 #include "RuntimeScanner.hpp"
@@ -72,6 +73,12 @@ extern module AP_MODULE_DECLARE_DATA defender_module;
  *      The status of the body to be processed
  */
 #define IF_STATUS_COMPLETE 2
+
+/**
+ * \def SLASHES
+ *      The slash as string, used to urlencode/decode
+ */
+#define SLASHES "/"
 
 
 /**************/
