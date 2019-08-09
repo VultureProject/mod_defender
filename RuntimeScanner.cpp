@@ -5,6 +5,7 @@
  *  |_| |_| |_|\___/ \__,_|___\__,_|\___|_|  \___|_| |_|\__,_|\___|_|
  *                       |_____|
  *  Copyright (c) 2017 Annihil
+ *  Copyright (c) 2019 Jérémie Jourdin - Advens
  *  Released under the GPLv3
  */
 
@@ -696,12 +697,12 @@ void RuntimeScanner::addHeader(char *key, char *val) {
     }
         // Store Content-Type for further processing
     else if (k == "content-type") {
-        if (v == "application/x-www-form-urlencoded") {
+        if (v.substr(0, 33) == "application/x-www-form-urlencoded") {
             contentType = CONTENT_TYPE_URL_ENC;
         } else if (v.substr(0, 20) == "multipart/form-data;") {
             contentType = CONTENT_TYPE_MULTIPART;
             rawContentType = string(val); // important: need to keep the case!
-        } else if (v == "application/json") {
+        } else if (v.substr(0,16) == "application/json") {
             contentType = CONTENT_TYPE_APP_JSON;
         }
     }
@@ -954,7 +955,13 @@ void RuntimeScanner::writeJSONLearningLog() {
     jsonlog << "\"protocol\":\"" << protocol << "\",";
     jsonlog << "\"unparsed_uri\":\"" << fullUri << "\",";
     unique_data << "" << uri;
-    jsonlog << "\"context_id\":\"" << unique_data.str() << "\"";
+    /*
+            o This may generate HUGE string - thus causing problem when inserting into databases
+            o Better approach: Use HASH
+     */
+    std::hash<std::string> hash_fn;
+    size_t str_hash = hash_fn(unique_data.str());
+    jsonlog << "\"context_id\":\"" << str_hash << "\"";
 
     jsonlog << "}" << endl;
     streamToFile(jsonlog, learningJSONLogFile);

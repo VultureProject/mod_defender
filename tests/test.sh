@@ -6,7 +6,6 @@ if [ "$#" -ne 1 ]; then
 fi
 HOST=$1
 curl_ret="-s -o /dev/null -w %{http_code}"
-ca_path="/etc/apache2/ssl/ca.crt"
 
 PASS_MESSAGE="[ \033[0;32mPASS\033[0m ]"
 FAIL_MESSAGE="[ \033[0;31mFAIL\033[0m ]"

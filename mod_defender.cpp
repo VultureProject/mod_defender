@@ -134,6 +134,141 @@ static int write_log(void *thefile, const void *buf, size_t *nbytes) {
 }
 
 /**
+ *  Function from Apache httpd, used to convert 2 chars string into hex int
+ *   Example: "2a" => 0x2a
+ */
+static char x2c(const char *what)
+{
+    char digit;
+
+#if !APR_CHARSET_EBCDIC
+    digit = ((what[0] >= 'A') ? ((what[0] & 0xdf) - 'A') + 10
+                              : (what[0] - '0'));
+    digit *= 16;
+    digit += (what[1] >= 'A' ? ((what[1] & 0xdf) - 'A') + 10
+                             : (what[1] - '0'));
+#else /*APR_CHARSET_EBCDIC*/
+    char xstr[5];
+    xstr[0]='0';
+    xstr[1]='x';
+    xstr[2]=what[0];
+    xstr[3]=what[1];
+    xstr[4]='\0';
+    digit = apr_xlate_conv_byte(ap_hdrs_from_ascii,
+                                0xFF & strtol(xstr, NULL, 16));
+#endif /*APR_CHARSET_EBCDIC*/
+    return (digit);
+}
+
+/**
+ *  Function from Apache httpd, used to urldecode string
+ *   The particularity of this function, instead of Apache's, is that the %00 is not interpreted
+ */
+static int unescape_url(char *url, const char *forbid, const char *reserved)
+{
+    int badesc, badpath;
+    char *x, *y;
+
+    badesc = 0;
+    badpath = 0;
+    /* Initial scan for first '%'. Don't bother writing values before
+     * seeing a '%' */
+    y = strchr(url, '%');
+    if (y == NULL) {
+        return OK;
+    }
+    for (x = y; *y; ++x, ++y) {
+        if (*y != '%') {
+            *x = *y;
+        }
+        else {
+            if (!apr_isxdigit(*(y + 1)) || !apr_isxdigit(*(y + 2))) {
+                badesc = 1;
+                *x = '%';
+            }
+            else {
+                char decoded;
+                decoded = x2c(y + 1);
+                if( decoded == '\0' ) {
+                    /* Copy-Paste the %00 - don't interpret ! */
+                    *x++ = *y++;
+                    *x++ = *y++;
+                    *x = *y;
+                    badpath = 1;
+                } else if( forbid && ap_strchr_c(forbid, decoded) ) {
+                    badpath = 1;
+                    *x = decoded;
+                    y += 2;
+                }
+                else if (reserved && ap_strchr_c(reserved, decoded)) {
+                    *x++ = *y++;
+                    *x++ = *y++;
+                    *x = *y;
+                }
+                else {
+                    *x = decoded;
+                    y += 2;
+                }
+            }
+        }
+    }
+    *x = '\0';
+    if (badesc) {
+        return HTTP_BAD_REQUEST;
+    }
+    else if (badpath) {
+        return HTTP_NOT_FOUND;
+    }
+    else {
+        return OK;
+    }
+}
+
+/**
+ *  Function from Apache httpd, used too convert get params as string
+ *   into an apr_table_t struct filled in with key, value pairs GET params
+ */
+static void argstring_to_table(char *str, apr_table_t *parms)
+{
+    char *key;
+    char *value;
+    char *strtok_state;
+
+    if (str == NULL) {
+        return;
+    }
+
+    key = apr_strtok(str, "&", &strtok_state);
+    while (key) {
+        value = strchr(key, '=');
+        if (value) {
+            *value = '\0';      /* Split the string in two */
+            value++;            /* Skip passed the = */
+        }
+        else {
+            value = (char*)"1";
+        }
+        /* Verify return ? */
+        unescape_url(key, SLASHES, NULL);
+        unescape_url(value, SLASHES, NULL);
+        apr_table_set(parms, key, value);
+        key = apr_strtok(NULL, "&", &strtok_state);
+    }
+}
+
+/**
+ *  Function from Apache httpd, used to convert request GET arguments
+ *   into an apr_table_t struct filled-in with key, value pairs
+ */
+void args_to_table(request_rec *r, apr_table_t **table)
+{
+    apr_table_t *t = apr_table_make(r->pool, 10);
+    argstring_to_table(apr_pstrdup(r->pool, r->args), t);
+    *table = t;
+}
+
+
+/**
  *  This routine gives our module another chance to examine the request
  *   headers and to take special action. This is the first phase whose
  *   hooks' configuration directives can appear inside the <Directory>
@@ -254,7 +389,7 @@ static int header_parser(request_rec *r) {
 
     // Pass GET parameters
     apr_table_t *getTable = NULL;
-    ap_args_to_table(r, &getTable);
+    args_to_table(r, &getTable);
     const apr_array_header_t *getParams = apr_table_elts(getTable);
     apr_table_entry_t *getParam = (apr_table_entry_t *) getParams->elts;
     for (int i = 0; i < getParams->nelts; i++)

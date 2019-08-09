@@ -18,7 +18,7 @@ test_count=$((test_count + 1))
 echo -e "sent 2MB @ 350kb/s                            " "$req" "$status_code  $test_msg"
 
 status_code=$(printf %1000s | tr " " "a" | curl $HOST --data-binary @- -H "Transfer-Encoding: chunked" $curl_ret)
-test_msg=`check_block $status_code 0`
+test_msg=`check_status_code $status_code 501`
 test_passed=$((test_passed + $?))
 test_count=$((test_count + 1))
 echo -e "sent 1kB with transfer-encoding: chunked      " "$req" "$status_code  $test_msg"

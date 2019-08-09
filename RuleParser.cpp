@@ -54,12 +54,12 @@ RuleParser::RuleParser() {
 
     libsqliRule.id = 17;
     libsqliRule.scores.emplace_back("$LIBINJECTION_SQL", 8);
-    libsqliRule.action = BLOCK;
+    libsqliRule.action = LOG;
 
     libxssRule.id = 18;
     libxssRule.logMsg = "Libinjection XSS";
     libxssRule.scores.emplace_back("$LIBINJECTION_XSS", 8);
-    libxssRule.action = BLOCK;
+    libxssRule.action = LOG;
 }
 
 unsigned int RuleParser::parseMainRules(vector<string> &ruleLines, string errorMsg) {
